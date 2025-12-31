@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_FUNCTIONS_URL = Deno.env.get("SUPABASE_FUNCTIONS_URL") ?? "";
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error("Missing Supabase environment variables");
@@ -109,6 +111,23 @@ Deno.serve(async (req) => {
   if (updateError) {
     console.log("cancel_failed", { booking_id: booking.id, member_id: member.id });
     return jsonResponse(500, { error: "cancel_failed" });
+  }
+
+  if (SUPABASE_SERVICE_ROLE_KEY && SUPABASE_FUNCTIONS_URL) {
+    fetch(`${SUPABASE_FUNCTIONS_URL}/promote_waitlist`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({ class_instance_id: booking.class_instance_id }),
+    })
+      .then(() => {
+        console.log("promotion_triggered", { class_instance_id: booking.class_instance_id });
+      })
+      .catch((error) => {
+        console.log("promotion_trigger_failed", { error: error?.message });
+      });
   }
 
   console.log("booking_canceled", {
