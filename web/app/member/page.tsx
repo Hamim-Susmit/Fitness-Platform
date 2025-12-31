@@ -72,6 +72,34 @@ function MemberDashboard() {
     },
   });
 
+  const { data: memberSubscription } = useQuery<{ access_state: string } | null>({
+    queryKey: ["member-access-state", member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const { data } = await supabaseBrowser
+        .from("member_subscriptions")
+        .select("access_state")
+        .eq("member_id", member?.id ?? "")
+        .maybeSingle();
+      return (data ?? null) as { access_state: string } | null;
+    },
+  });
+
+  const { data: delinquency } = useQuery<{ delinquency_state: string; grace_period_until: string | null } | null>({
+    queryKey: ["member-delinquency", member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const { data } = await supabaseBrowser
+        .from("subscriptions")
+        .select("delinquency_state, grace_period_until")
+        .eq("member_id", member?.id ?? "")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (data ?? null) as { delinquency_state: string; grace_period_until: string | null } | null;
+    },
+  });
+
   const generateToken = useMutation({
     mutationFn: async () => {
       const response = await callEdgeFunction<{ token: string; expires_at: string }>("generate_qr_token");
@@ -114,10 +142,27 @@ function MemberDashboard() {
             {generateToken.isError ? (
               <p className="mt-3 text-sm text-rose-400">{generateToken.error?.message ?? "Token generation failed."}</p>
             ) : null}
+            {memberSubscription?.access_state === "grace" ? (
+              <p className="mt-3 text-sm text-amber-300">
+                Payment issue detected — your access is in grace period
+                {delinquency?.grace_period_until
+                  ? ` until ${new Date(delinquency.grace_period_until).toLocaleDateString()}.`
+                  : "."}{" "}
+                Please update billing.
+              </p>
+            ) : null}
+            {memberSubscription?.access_state === "restricted" ? (
+              <p className="mt-3 text-sm text-rose-300">
+                Membership access restricted due to unpaid balance.
+              </p>
+            ) : null}
+            {delinquency?.delinquency_state === "recovered" ? (
+              <p className="mt-3 text-sm text-emerald-300">Thanks — your membership is active again.</p>
+            ) : null}
             <button
               onClick={() => generateToken.mutate()}
               className="mt-4 rounded-lg bg-cyan-500 text-slate-950 px-4 py-2 font-semibold hover:bg-cyan-400"
-              disabled={generateToken.isPending}
+              disabled={generateToken.isPending || memberSubscription?.access_state === "restricted"}
             >
               {generateToken.isPending ? "Generating..." : "Refresh Token"}
             </button>

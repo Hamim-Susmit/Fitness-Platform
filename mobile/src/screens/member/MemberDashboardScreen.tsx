@@ -52,6 +52,34 @@ export default function MemberDashboardScreen() {
     },
   });
 
+  const { data: memberSubscription } = useQuery<{ access_state: string } | null>({
+    queryKey: ["member-access-state", member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("member_subscriptions")
+        .select("access_state")
+        .eq("member_id", member?.id ?? "")
+        .maybeSingle();
+      return (data ?? null) as { access_state: string } | null;
+    },
+  });
+
+  const { data: delinquency } = useQuery<{ delinquency_state: string; grace_period_until: string | null } | null>({
+    queryKey: ["member-delinquency", member?.id],
+    enabled: !!member?.id,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("delinquency_state, grace_period_until")
+        .eq("member_id", member?.id ?? "")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      return (data ?? null) as { delinquency_state: string; grace_period_until: string | null } | null;
+    },
+  });
+
   const generateToken = useMutation({
     mutationFn: async () => {
       const response = await callEdgeFunction<{ token: string; expires_at: string }>("generate_qr_token");
@@ -83,7 +111,26 @@ export default function MemberDashboardScreen() {
           <QRDisplay token={token} expiresInSeconds={expiresInSeconds} />
         </View>
         {generateToken.isError ? <Text style={styles.errorText}>{generateToken.error?.message ?? "Token error"}</Text> : null}
-        <Pressable style={styles.button} onPress={() => generateToken.mutate()} disabled={generateToken.isPending}>
+        {memberSubscription?.access_state === "grace" ? (
+          <Text style={styles.warning}>
+            Payment issue detected — your access is in grace period
+            {delinquency?.grace_period_until
+              ? ` until ${new Date(delinquency.grace_period_until).toLocaleDateString()}.`
+              : "."}{" "}
+            Please update billing.
+          </Text>
+        ) : null}
+        {memberSubscription?.access_state === "restricted" ? (
+          <Text style={styles.errorText}>Membership access restricted due to unpaid balance.</Text>
+        ) : null}
+        {delinquency?.delinquency_state === "recovered" ? (
+          <Text style={styles.success}>Thanks — your membership is active again.</Text>
+        ) : null}
+        <Pressable
+          style={[styles.button, memberSubscription?.access_state === "restricted" && styles.buttonDisabled]}
+          onPress={() => generateToken.mutate()}
+          disabled={generateToken.isPending || memberSubscription?.access_state === "restricted"}
+        >
           <Text style={styles.buttonText}>{generateToken.isPending ? "Generating..." : "Refresh Token"}</Text>
         </Pressable>
       </View>
@@ -146,5 +193,16 @@ const styles = StyleSheet.create({
   errorText: {
     color: colors.error,
     marginTop: spacing.sm,
+  },
+  warning: {
+    color: "#fbbf24",
+    marginTop: spacing.sm,
+  },
+  success: {
+    color: colors.success,
+    marginTop: spacing.sm,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
 });

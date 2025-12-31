@@ -66,6 +66,7 @@ create table if not exists public.member_subscriptions (
   plan_id uuid references public.membership_plans (id) on delete restrict,
   subscription_id uuid references public.subscriptions (id) on delete set null,
   status text not null check (status in ('active', 'inactive')),
+  access_state text not null default 'active' check (access_state in ('active', 'grace', 'restricted', 'inactive')),
   started_at timestamptz not null default now(),
   ends_at timestamptz,
   created_at timestamptz not null default now(),
@@ -113,6 +114,8 @@ create table if not exists public.subscriptions (
   stripe_customer_id text,
   stripe_subscription_id text,
   status text not null check (status in ('active', 'trialing', 'past_due', 'canceled', 'unpaid')),
+  delinquency_state text not null default 'none' check (delinquency_state in ('pending_retry', 'past_due', 'in_grace', 'canceled', 'recovered', 'none')),
+  grace_period_until timestamptz,
   current_period_start timestamptz,
   current_period_end timestamptz,
   cancel_at_period_end boolean not null default false,
@@ -195,6 +198,7 @@ create index if not exists idx_checkin_tokens_expires_at on public.checkin_token
 create index if not exists idx_subscriptions_member_id on public.subscriptions (member_id);
 create index if not exists idx_subscriptions_status on public.subscriptions (status);
 create index if not exists idx_subscriptions_stripe_subscription_id on public.subscriptions (stripe_subscription_id);
+create index if not exists idx_subscriptions_grace_period_until on public.subscriptions (grace_period_until);
 create index if not exists idx_transactions_subscription_id on public.transactions (subscription_id);
 create index if not exists idx_transactions_status on public.transactions (status);
 create index if not exists idx_invoices_subscription_id on public.invoices (subscription_id);

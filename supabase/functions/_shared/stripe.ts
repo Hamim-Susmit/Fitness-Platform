@@ -61,6 +61,7 @@ export async function updateSubscriptionAndMemberStatus(
   const internalStatus = mapStripeStatusToInternalStatus(stripeSubscription.status);
   const membershipStatus =
     internalStatus === "active" || internalStatus === "trialing" ? "active" : "inactive";
+  const accessState = membershipStatus === "active" ? "active" : "inactive";
   const stripePriceId = stripeSubscription.items.data[0]?.price?.id ?? null;
 
   let pricingPlanId: string | null = null;
@@ -135,7 +136,7 @@ export async function updateSubscriptionAndMemberStatus(
     if (link?.id) {
       const { error } = await supabase
         .from("member_subscriptions")
-        .update({ status: membershipStatus, subscription_id: subscriptionId })
+        .update({ status: membershipStatus, access_state: accessState, subscription_id: subscriptionId })
         .eq("id", link.id);
       if (error) throw error;
     } else {
@@ -143,6 +144,7 @@ export async function updateSubscriptionAndMemberStatus(
         member_id: memberId,
         subscription_id: subscriptionId,
         status: membershipStatus,
+        access_state: accessState,
       });
       if (error) throw error;
     }

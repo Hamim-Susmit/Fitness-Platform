@@ -11,6 +11,7 @@ import { mapStripeStatusToInternalStatus, updateSubscriptionAndMemberStatus, str
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const STRIPE_WEBHOOK_SECRET = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
+const SUPABASE_FUNCTIONS_URL = Deno.env.get("SUPABASE_FUNCTIONS_URL") ?? "";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase environment variables");
@@ -24,6 +25,18 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function notifyBilling(event: string, memberId: string, gracePeriodUntil?: string | null) {
+  if (!SUPABASE_FUNCTIONS_URL) return;
+  await fetch(`${SUPABASE_FUNCTIONS_URL}/send_billing_notifications`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+    body: JSON.stringify({ event, member_id: memberId, grace_period_until: gracePeriodUntil }),
   });
 }
 
@@ -184,7 +197,7 @@ Deno.serve(async (req) => {
 
         await serviceClient
           .from("subscriptions")
-          .update({ status: "canceled", cancel_at_period_end: false })
+          .update({ status: "canceled", cancel_at_period_end: false, delinquency_state: "canceled" })
           .eq("stripe_subscription_id", subscription.id);
 
         if (memberId) {
@@ -195,7 +208,7 @@ Deno.serve(async (req) => {
 
           await serviceClient
             .from("member_subscriptions")
-            .update({ status: "inactive" })
+            .update({ status: "inactive", access_state: "inactive" })
             .eq("member_id", memberId);
         }
         break;
@@ -216,6 +229,26 @@ Deno.serve(async (req) => {
               invoice.payment_intent as string | null,
               "succeeded"
             );
+
+            await serviceClient
+              .from("subscriptions")
+              .update({ delinquency_state: "recovered", grace_period_until: null })
+              .eq("id", subscriptionId);
+
+            const { data: sub } = await serviceClient
+              .from("subscriptions")
+              .select("member_id")
+              .eq("id", subscriptionId)
+              .maybeSingle();
+
+            if (sub?.member_id) {
+              await serviceClient
+                .from("member_subscriptions")
+                .update({ access_state: "active" })
+                .eq("member_id", sub.member_id);
+
+              await notifyBilling("billing.payment_recovered", sub.member_id, null);
+            }
           }
         }
         break;
@@ -239,8 +272,27 @@ Deno.serve(async (req) => {
 
             await serviceClient
               .from("subscriptions")
-              .update({ status: "past_due" })
+              .update({
+                status: "past_due",
+                delinquency_state: "pending_retry",
+                grace_period_until: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              })
               .eq("id", subscriptionId);
+
+            const { data: sub } = await serviceClient
+              .from("subscriptions")
+              .select("member_id, grace_period_until")
+              .eq("id", subscriptionId)
+              .maybeSingle();
+
+            if (sub?.member_id) {
+              await serviceClient
+                .from("member_subscriptions")
+                .update({ access_state: "grace" })
+                .eq("member_id", sub.member_id);
+
+              await notifyBilling("billing.payment_failed", sub.member_id, sub.grace_period_until);
+            }
           }
         }
         break;
