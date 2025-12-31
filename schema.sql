@@ -63,8 +63,9 @@ create table if not exists public.membership_plans (
 create table if not exists public.member_subscriptions (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.members (id) on delete cascade,
-  plan_id uuid not null references public.membership_plans (id) on delete restrict,
-  status text not null check (status in ('active', 'canceled', 'past_due')),
+  plan_id uuid references public.membership_plans (id) on delete restrict,
+  subscription_id uuid references public.subscriptions (id) on delete set null,
+  status text not null check (status in ('active', 'inactive')),
   started_at timestamptz not null default now(),
   ends_at timestamptz,
   created_at timestamptz not null default now(),
@@ -108,7 +109,7 @@ create table if not exists public.pricing_plans (
 create table if not exists public.subscriptions (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.members (id) on delete cascade,
-  pricing_plan_id uuid not null references public.pricing_plans (id) on delete restrict,
+  pricing_plan_id uuid references public.pricing_plans (id) on delete restrict,
   stripe_customer_id text,
   stripe_subscription_id text,
   status text not null check (status in ('active', 'trialing', 'past_due', 'canceled', 'unpaid')),
@@ -141,6 +142,12 @@ create table if not exists public.invoices (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.stripe_events (
+  id text primary key,
+  type text not null,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_members_gym_id on public.members (gym_id);
 create index if not exists idx_members_user_id on public.members (user_id);
 create unique index if not exists idx_members_stripe_customer_id on public.members (stripe_customer_id) where stripe_customer_id is not null;
@@ -148,6 +155,7 @@ create index if not exists idx_staff_gym_id on public.staff (gym_id);
 create index if not exists idx_staff_user_id on public.staff (user_id);
 create index if not exists idx_membership_plans_gym_id on public.membership_plans (gym_id);
 create index if not exists idx_member_subscriptions_member_id on public.member_subscriptions (member_id);
+create index if not exists idx_member_subscriptions_subscription_id on public.member_subscriptions (subscription_id);
 create index if not exists idx_checkins_gym_id on public.checkins (gym_id);
 create index if not exists idx_checkins_member_id on public.checkins (member_id);
 create index if not exists idx_checkins_checked_in_at on public.checkins (checked_in_at);
@@ -325,6 +333,7 @@ alter table public.pricing_plans enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.transactions enable row level security;
 alter table public.invoices enable row level security;
+alter table public.stripe_events enable row level security;
 
 -- users policies
 create policy users_select_self
@@ -455,7 +464,7 @@ for delete
 using (public.is_gym_owner(gym_id));
 
 -- member subscriptions policies
-create policy member_subscriptions_select
+create policy member_subscriptions_select_member_or_staff
 on public.member_subscriptions
 for select
 using (
@@ -466,38 +475,6 @@ using (
       and m.user_id = auth.uid()
   )
   or exists (
-    select 1
-    from public.members m
-    where m.id = member_id
-      and public.is_gym_staff(m.gym_id)
-  )
-);
-
-create policy member_subscriptions_write_staff
-on public.member_subscriptions
-for insert
-with check (
-  exists (
-    select 1
-    from public.members m
-    where m.id = member_id
-      and public.is_gym_staff(m.gym_id)
-  )
-);
-
-create policy member_subscriptions_update_staff
-on public.member_subscriptions
-for update
-using (
-  exists (
-    select 1
-    from public.members m
-    where m.id = member_id
-      and public.is_gym_staff(m.gym_id)
-  )
-)
-with check (
-  exists (
     select 1
     from public.members m
     where m.id = member_id
