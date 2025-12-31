@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
 import { useTokenStore, useSessionStore } from "../../store/useSessionStore";
@@ -9,12 +11,14 @@ import { colors, spacing, fontSize } from "../../styles/theme";
 import type { Checkin, MemberProfile } from "../../lib/types";
 import { callEdgeFunction } from "../../lib/api";
 import { secondsUntil } from "../../lib/time";
+import type { MemberStackParamList } from "../../navigation/member";
 
 export default function MemberDashboardScreen() {
   const { session } = useSessionStore();
   const { token, expiresAt, setToken } = useTokenStore();
   const [now, setNow] = useState(Date.now());
   const queryCache = useQueryClient();
+  const navigation = useNavigation<NativeStackNavigationProp<MemberStackParamList>>();
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -138,6 +142,9 @@ export default function MemberDashboardScreen() {
         <Text style={styles.title}>Membership Status</Text>
         <Text style={styles.statusText}>Status: {member?.status ?? "unknown"}</Text>
         <Text style={styles.helper}>Need help? Contact staff at the front desk.</Text>
+        <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate("ClassSchedule")}>
+          <Text style={styles.secondaryButtonText}>View Classes</Text>
+        </Pressable>
       </View>
       <CheckinsList checkins={checkins} title="Visit History" />
       {checkinsLoading ? <Text style={styles.helper}>Loading visits...</Text> : null}
@@ -180,6 +187,18 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: colors.background,
+    fontWeight: "600",
+  },
+  secondaryButton: {
+    marginTop: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    alignItems: "center",
+  },
+  secondaryButtonText: {
+    color: colors.textPrimary,
     fontWeight: "600",
   },
   statusText: {

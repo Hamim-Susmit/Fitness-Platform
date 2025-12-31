@@ -17,6 +17,8 @@ export function useBookings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["class-instances"] });
       queryClient.invalidateQueries({ queryKey: ["class-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["class-waitlist"] });
+      queryClient.invalidateQueries({ queryKey: ["class-booking-counts"] });
     },
   });
 
@@ -33,8 +35,28 @@ export function useBookings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["class-instances"] });
       queryClient.invalidateQueries({ queryKey: ["class-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["class-waitlist"] });
+      queryClient.invalidateQueries({ queryKey: ["class-booking-counts"] });
     },
   });
 
-  return { bookClass, cancelBooking };
+  const joinWaitlist = useMutation({
+    mutationFn: async (classInstanceId: string) => {
+      const response = await callEdgeFunction<{ waitlist: unknown }>("join_waitlist", {
+        body: { class_instance_id: classInstanceId },
+      });
+      if (response.error || !response.data) {
+        throw new Error(response.error ?? "Unable to join waitlist");
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["class-instances"] });
+      queryClient.invalidateQueries({ queryKey: ["class-waitlist"] });
+      queryClient.invalidateQueries({ queryKey: ["class-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["class-booking-counts"] });
+    },
+  });
+
+  return { bookClass, cancelBooking, joinWaitlist };
 }
