@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Header from "../../components/Header";
 import QRDisplay from "../../components/QRDisplay";
 import CheckinsList from "../../components/CheckinsList";
 import { supabaseBrowser } from "../../lib/supabase-browser";
@@ -128,7 +127,6 @@ function MemberDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header />
       <main className="mx-auto max-w-6xl px-6 py-8 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         <section className="space-y-6">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">

@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Header from "../../../components/Header";
 import BillingPlanCard from "../../../components/BillingPlanCard";
 import { loadSessionAndRole, useAuthStore } from "../../../lib/auth";
 import { roleRedirectPath } from "../../../lib/roles";
@@ -37,7 +36,6 @@ export default function BillingPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header />
       <main className="mx-auto max-w-5xl px-6 py-8 space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
           <h2 className="text-2xl font-semibold">Billing</h2>

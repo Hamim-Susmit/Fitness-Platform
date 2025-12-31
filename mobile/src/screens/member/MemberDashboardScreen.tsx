@@ -12,6 +12,8 @@ import type { Checkin, MemberProfile } from "../../lib/types";
 import { callEdgeFunction } from "../../lib/api";
 import { secondsUntil } from "../../lib/time";
 import type { MemberStackParamList } from "../../navigation/member";
+import { useActiveGym } from "../../lib/useActiveGym";
+import LocationSwitcher from "../../components/LocationSwitcher";
 
 export default function MemberDashboardScreen() {
   const { session } = useSessionStore();
@@ -19,6 +21,7 @@ export default function MemberDashboardScreen() {
   const [now, setNow] = useState(Date.now());
   const queryCache = useQueryClient();
   const navigation = useNavigation<NativeStackNavigationProp<MemberStackParamList>>();
+  const { activeGymId, gyms, setActiveGym, isMultiGymUser, accessNotice, loading: gymsLoading } = useActiveGym();
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -108,6 +111,17 @@ export default function MemberDashboardScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.headerRow}>
+        <LocationSwitcher
+          gyms={gyms}
+          activeGym={gyms.find((gym) => gym.id === activeGymId) ?? null}
+          activeGymId={activeGymId}
+          isMultiGymUser={isMultiGymUser}
+          accessNotice={accessNotice}
+          loading={gymsLoading}
+          onSelect={setActiveGym}
+        />
+      </View>
       <View style={styles.card}>
         <Text style={styles.title}>Your Check-in QR</Text>
         <Text style={styles.subtitle}>Generate a new QR token each time you enter the gym.</Text>
@@ -158,6 +172,9 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     backgroundColor: colors.background,
     gap: spacing.lg,
+  },
+  headerRow: {
+    marginTop: spacing.sm,
   },
   card: {
     backgroundColor: colors.surface,

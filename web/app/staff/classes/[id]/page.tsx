@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { QueryClient, QueryClientProvider, useMutation, useQueryClient } from "@tanstack/react-query";
-import Header from "../../../../components/Header";
 import { loadSessionAndRole, useAuthStore, useToastStore } from "../../../../lib/auth";
 import { isStaffRole, roleRedirectPath } from "../../../../lib/roles";
 import { callEdgeFunction } from "../../../../lib/api";
@@ -137,7 +136,6 @@ function ClassManagementConsole() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 text-white">
-        <Header />
         <main className="mx-auto max-w-5xl px-6 py-8">
           <p className="text-sm text-slate-400">Loading class details...</p>
         </main>
@@ -148,7 +146,6 @@ function ClassManagementConsole() {
   if (isError || !instance) {
     return (
       <div className="min-h-screen bg-slate-950 text-white">
-        <Header />
         <main className="mx-auto max-w-5xl px-6 py-8">
           <p className="text-sm text-rose-400">Unable to load class details.</p>
         </main>
@@ -163,7 +160,6 @@ function ClassManagementConsole() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header />
       <main className="mx-auto max-w-6xl px-6 py-8 space-y-6">
         {message ? (
           <div

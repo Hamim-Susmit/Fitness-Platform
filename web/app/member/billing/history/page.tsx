@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Header from "../../../../components/Header";
 import BillingHistoryTable from "../../../../components/BillingHistoryTable";
 import { loadSessionAndRole, useAuthStore } from "../../../../lib/auth";
 import { roleRedirectPath } from "../../../../lib/roles";
@@ -33,7 +32,6 @@ export default function BillingHistoryPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header />
       <main className="mx-auto max-w-5xl px-6 py-8 space-y-4">
         <h2 className="text-2xl font-semibold">Billing History</h2>
         {history.isLoading ? (

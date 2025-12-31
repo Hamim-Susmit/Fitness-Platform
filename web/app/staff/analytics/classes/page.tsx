@@ -12,7 +12,6 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import Header from "../../../../components/Header";
 import { loadSessionAndRole, useAuthStore } from "../../../../lib/auth";
 import { isStaffRole, roleRedirectPath } from "../../../../lib/roles";
 import { supabaseBrowser } from "../../../../lib/supabase-browser";
@@ -140,7 +139,6 @@ function AnalyticsDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header />
       <main className="mx-auto max-w-6xl px-6 py-8 space-y-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

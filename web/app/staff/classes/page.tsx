@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
-import Header from "../../../components/Header";
 import { supabaseBrowser } from "../../../lib/supabase-browser";
 import { loadSessionAndRole, useAuthStore } from "../../../lib/auth";
 import { isStaffRole, roleRedirectPath } from "../../../lib/roles";
@@ -35,7 +34,7 @@ function ClassesList() {
   const router = useRouter();
   const { session, role, loading } = useAuthStore();
   const [instructorId, setInstructorId] = useState<string | null>(null);
-  const { activeGymId, gyms, setActiveGym, loading: gymsLoading } = useActiveGym();
+  const { activeGymId, loading: gymsLoading } = useActiveGym();
 
   useEffect(() => {
     loadSessionAndRole();
@@ -138,29 +137,16 @@ function ClassesList() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <Header />
       <main className="mx-auto max-w-5xl px-6 py-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">Upcoming Classes</h1>
             <p className="text-sm text-slate-400">Manage rosters, attendance, and updates.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {gyms.map((gym) => (
-              <button
-                key={gym.id}
-                className={`rounded-full border px-3 py-1 text-xs ${
-                  activeGymId === gym.id ? "border-cyan-400 bg-cyan-500/10 text-cyan-200" : "border-slate-800 text-slate-300"
-                }`}
-                onClick={() => setActiveGym(gym.id)}
-              >
-                {gym.code ?? gym.name}
-              </button>
-            ))}
-          </div>
+          <div className="text-xs text-slate-500">Switch locations from the header.</div>
         </div>
-        {!gymsLoading && gyms.length === 0 ? (
-          <p className="mt-6 text-sm text-slate-400">No gym access found. Contact an admin.</p>
+        {!gymsLoading && !activeGymId ? (
+          <p className="mt-6 text-sm text-slate-400">No active gym access — contact support.</p>
         ) : null}
         {isLoading ? <p className="mt-6 text-sm text-slate-400">Loading classes...</p> : null}
         {!isLoading && instances.length === 0 ? (
