@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "../../../lib/supabase-browser";
 import { fetchUserRole, loadSessionAndRole, useAuthStore } from "../../../lib/auth";
+import { roleRedirectPath } from "../../../lib/roles";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,11 +35,7 @@ export default function LoginPage() {
   useEffect(() => {
     if (loading) return;
     if (!session || !role) return;
-    if (role === "member") {
-      router.replace("/member");
-      return;
-    }
-    router.replace("/staff");
+    router.replace(roleRedirectPath(role));
   }, [loading, role, router, session]);
 
   const handleLogin = async (event: React.FormEvent) => {
@@ -62,11 +59,7 @@ export default function LoginPage() {
     setSession(data.session);
     setSubmitting(false);
 
-    if (nextRole === "member") {
-      router.replace("/member");
-      return;
-    }
-    router.replace("/staff");
+    router.replace(roleRedirectPath(nextRole));
   };
 
   return (

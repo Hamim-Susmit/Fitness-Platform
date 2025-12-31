@@ -2,11 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import type { Checkin } from "../lib/types";
 import { colors, spacing, fontSize } from "../styles/theme";
-
-const formatTime = (timestamp: string) => {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
+import { formatTime } from "../lib/time";
 
 type CheckinsListProps = {
   checkins: Checkin[];

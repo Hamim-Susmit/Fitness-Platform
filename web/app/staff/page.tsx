@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { QueryClient, QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Header from "../../components/Header";
@@ -8,9 +8,16 @@ import QRScanner from "../../components/QRScanner";
 import CheckinsList from "../../components/CheckinsList";
 import { supabaseBrowser } from "../../lib/supabase-browser";
 import { loadSessionAndRole, useAuthStore, useToastStore } from "../../lib/auth";
+import { callEdgeFunction } from "../../lib/api";
+import { roleRedirectPath, isStaffRole } from "../../lib/roles";
+import { useRealtimeCheckins } from "../../lib/useRealtimeCheckins";
 import type { Checkin, StaffProfile } from "../../lib/types";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 2, refetchOnWindowFocus: false },
+  },
+});
 
 function StaffDashboard() {
   const router = useRouter();
@@ -24,8 +31,8 @@ function StaffDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!loading && (!session || role === "member" || role === null)) {
-      router.replace("/login");
+    if (!loading && (!session || !isStaffRole(role))) {
+      router.replace(roleRedirectPath(role));
     }
   }, [loading, role, router, session]);
 
@@ -56,7 +63,11 @@ function StaffDashboard() {
     return { start: start.toISOString(), end: end.toISOString() };
   }, []);
 
-  const { data: checkins = [] } = useQuery<Checkin[]>({
+  const {
+    data: checkins = [],
+    isLoading: checkinsLoading,
+    isError: checkinsError,
+  } = useQuery<Checkin[]>({
     queryKey: ["staff-checkins", gymId, todayRange.start],
     enabled: !!gymId,
     queryFn: async () => {
@@ -71,43 +82,30 @@ function StaffDashboard() {
     },
   });
 
-  useEffect(() => {
-    if (!gymId) return;
-
-    const channel = supabaseBrowser
-      .channel("realtime-checkins")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "checkins",
-          filter: `gym_id=eq.${gymId}`,
-        },
-        (payload) => {
-          const newCheckin = payload.new as Checkin;
-          queryCache.setQueryData<Checkin[]>(
-            ["staff-checkins", gymId, todayRange.start],
-            (existing = []) => [newCheckin, ...existing]
-          );
+  const handleRealtimeInsert = useCallback(
+    (newCheckin: Checkin) => {
+      queryCache.setQueryData<Checkin[]>(
+        ["staff-checkins", gymId, todayRange.start],
+        (existing = []) => {
+          if (existing.some((checkin) => checkin.id === newCheckin.id)) {
+            return existing;
+          }
+          return [newCheckin, ...existing];
         }
-      )
-      .subscribe();
+      );
+    },
+    [gymId, queryCache, todayRange.start]
+  );
 
-    return () => {
-      supabaseBrowser.removeChannel(channel);
-    };
-  }, [gymId, queryCache, todayRange.start]);
+  useRealtimeCheckins(gymId, handleRealtimeInsert);
 
   const validateToken = useMutation({
     mutationFn: async (token: string) => {
-      const { data, error } = await supabaseBrowser.functions.invoke("validate_qr_token", {
-        body: { token },
-      });
-      if (error) {
-        throw error;
+      const response = await callEdgeFunction<{ checkin_id: string }>("validate_qr_token", { body: { token } });
+      if (response.error || !response.data) {
+        throw new Error(response.error ?? "Unable to validate token");
       }
-      return data as { checkin_id: string };
+      return response.data;
     },
     onSuccess: () => {
       setToast("Check-in confirmed!", "success");
@@ -154,6 +152,15 @@ function StaffDashboard() {
         </section>
         <section>
           <CheckinsList checkins={checkins} title="Today's Check-ins" />
+          {checkinsLoading ? (
+            <p className="mt-3 text-sm text-slate-400">Loading check-ins...</p>
+          ) : null}
+          {checkinsError ? (
+            <p className="mt-3 text-sm text-rose-400">Unable to load check-ins.</p>
+          ) : null}
+          {!checkinsLoading && !checkinsError && checkins.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-400">No check-ins yet today.</p>
+          ) : null}
         </section>
       </main>
     </div>

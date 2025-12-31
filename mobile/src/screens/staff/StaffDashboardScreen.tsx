@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "../../lib/supabase";
@@ -6,6 +6,7 @@ import CheckinsList from "../../components/CheckinsList";
 import { colors, spacing, fontSize } from "../../styles/theme";
 import type { Checkin, StaffProfile } from "../../lib/types";
 import { useSessionStore } from "../../store/useSessionStore";
+import { useRealtimeCheckins } from "../../lib/useRealtimeCheckins";
 
 export default function StaffDashboardScreen() {
   const { session } = useSessionStore();
@@ -39,7 +40,11 @@ export default function StaffDashboardScreen() {
     return { start: start.toISOString(), end: end.toISOString() };
   }, []);
 
-  const { data: checkins = [] } = useQuery<Checkin[]>({
+  const {
+    data: checkins = [],
+    isLoading: checkinsLoading,
+    isError: checkinsError,
+  } = useQuery<Checkin[]>({
     queryKey: ["staff-checkins", gymId, todayRange.start],
     enabled: !!gymId,
     queryFn: async () => {
@@ -54,33 +59,22 @@ export default function StaffDashboardScreen() {
     },
   });
 
-  useEffect(() => {
-    if (!gymId) return;
-
-    const channel = supabase
-      .channel("realtime-checkins")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "checkins",
-          filter: `gym_id=eq.${gymId}`,
-        },
-        (payload) => {
-          const newCheckin = payload.new as Checkin;
-          queryCache.setQueryData<Checkin[]>(
-            ["staff-checkins", gymId, todayRange.start],
-            (existing = []) => [newCheckin, ...existing]
-          );
+  const handleRealtimeInsert = useCallback(
+    (newCheckin: Checkin) => {
+      queryCache.setQueryData<Checkin[]>(
+        ["staff-checkins", gymId, todayRange.start],
+        (existing = []) => {
+          if (existing.some((checkin) => checkin.id === newCheckin.id)) {
+            return existing;
+          }
+          return [newCheckin, ...existing];
         }
-      )
-      .subscribe();
+      );
+    },
+    [gymId, queryCache, todayRange.start]
+  );
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [gymId, queryCache, todayRange.start]);
+  useRealtimeCheckins(gymId, handleRealtimeInsert);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -89,6 +83,11 @@ export default function StaffDashboardScreen() {
         <Text style={styles.subtitle}>Realtime updates for all member visits.</Text>
       </View>
       <CheckinsList checkins={checkins} title="Today" />
+      {checkinsLoading ? <Text style={styles.empty}>Loading check-ins...</Text> : null}
+      {checkinsError ? <Text style={styles.error}>Unable to load check-ins.</Text> : null}
+      {!checkinsLoading && !checkinsError && checkins.length === 0 ? (
+        <Text style={styles.empty}>No check-ins yet today.</Text>
+      ) : null}
     </ScrollView>
   );
 }
@@ -114,5 +113,13 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  empty: {
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
+  error: {
+    color: colors.error,
+    marginTop: spacing.sm,
   },
 });

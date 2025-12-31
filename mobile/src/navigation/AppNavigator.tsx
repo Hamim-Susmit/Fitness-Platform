@@ -6,6 +6,7 @@ import MemberNavigator from "./MemberNavigator";
 import StaffNavigator from "./StaffNavigator";
 import { loadSessionAndRole } from "../lib/auth";
 import { useSessionStore } from "../store/useSessionStore";
+import { roleRootRoute } from "../lib/roles";
 import { View, ActivityIndicator } from "react-native";
 import { colors } from "../styles/theme";
 
@@ -37,7 +38,7 @@ export default function AppNavigator() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!session ? (
           <Stack.Screen name="Auth" component={AuthNavigator} />
-        ) : role === "member" ? (
+        ) : roleRootRoute(role) === "MemberRoot" ? (
           <Stack.Screen name="MemberRoot" component={MemberNavigator} />
         ) : (
           <Stack.Screen name="StaffRoot" component={StaffNavigator} />

@@ -7,6 +7,8 @@ import QRDisplay from "../../components/QRDisplay";
 import CheckinsList from "../../components/CheckinsList";
 import { colors, spacing, fontSize } from "../../styles/theme";
 import type { Checkin, MemberProfile } from "../../lib/types";
+import { callEdgeFunction } from "../../lib/api";
+import { secondsUntil } from "../../lib/time";
 
 export default function MemberDashboardScreen() {
   const { session } = useSessionStore();
@@ -32,7 +34,11 @@ export default function MemberDashboardScreen() {
     },
   });
 
-  const { data: checkins = [] } = useQuery<Checkin[]>({
+  const {
+    data: checkins = [],
+    isLoading: checkinsLoading,
+    isError: checkinsError,
+  } = useQuery<Checkin[]>({
     queryKey: ["member-checkins", member?.id],
     enabled: !!member?.id,
     queryFn: async () => {
@@ -48,11 +54,11 @@ export default function MemberDashboardScreen() {
 
   const generateToken = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("generate_qr_token");
-      if (error) {
-        throw error;
+      const response = await callEdgeFunction<{ token: string; expires_at: string }>("generate_qr_token");
+      if (response.error || !response.data) {
+        throw new Error(response.error ?? "Unable to generate token");
       }
-      return data as { token: string; expires_at: string };
+      return response.data;
     },
     onSuccess: (data) => {
       setToken(data.token, data.expires_at);
@@ -60,11 +66,7 @@ export default function MemberDashboardScreen() {
     },
   });
 
-  const expiresInSeconds = useMemo(() => {
-    if (!expiresAt) return null;
-    const diff = Math.max(0, Math.floor((new Date(expiresAt).getTime() - now) / 1000));
-    return diff;
-  }, [expiresAt, now]);
+  const expiresInSeconds = useMemo(() => secondsUntil(expiresAt, now), [expiresAt, now]);
 
   useEffect(() => {
     if (expiresInSeconds !== null && expiresInSeconds <= 0) {
@@ -80,6 +82,7 @@ export default function MemberDashboardScreen() {
         <View style={styles.qrSection}>
           <QRDisplay token={token} expiresInSeconds={expiresInSeconds} />
         </View>
+        {generateToken.isError ? <Text style={styles.errorText}>{generateToken.error?.message ?? "Token error"}</Text> : null}
         <Pressable style={styles.button} onPress={() => generateToken.mutate()} disabled={generateToken.isPending}>
           <Text style={styles.buttonText}>{generateToken.isPending ? "Generating..." : "Refresh Token"}</Text>
         </Pressable>
@@ -90,6 +93,8 @@ export default function MemberDashboardScreen() {
         <Text style={styles.helper}>Need help? Contact staff at the front desk.</Text>
       </View>
       <CheckinsList checkins={checkins} title="Visit History" />
+      {checkinsLoading ? <Text style={styles.helper}>Loading visits...</Text> : null}
+      {checkinsError ? <Text style={styles.errorText}>Unable to load visits.</Text> : null}
     </ScrollView>
   );
 }
@@ -137,5 +142,9 @@ const styles = StyleSheet.create({
   helper: {
     color: colors.textSecondary,
     marginTop: spacing.xs,
+  },
+  errorText: {
+    color: colors.error,
+    marginTop: spacing.sm,
   },
 });

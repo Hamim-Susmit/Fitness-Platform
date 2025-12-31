@@ -8,9 +8,16 @@ import QRDisplay from "../../components/QRDisplay";
 import CheckinsList from "../../components/CheckinsList";
 import { supabaseBrowser } from "../../lib/supabase-browser";
 import { loadSessionAndRole, useAuthStore, useTokenStore } from "../../lib/auth";
+import { callEdgeFunction } from "../../lib/api";
+import { roleRedirectPath } from "../../lib/roles";
+import { secondsUntil } from "../../lib/time";
 import type { Checkin, MemberProfile } from "../../lib/types";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 2, refetchOnWindowFocus: false },
+  },
+});
 
 function MemberDashboard() {
   const router = useRouter();
@@ -25,7 +32,7 @@ function MemberDashboard() {
 
   useEffect(() => {
     if (!loading && (!session || role !== "member")) {
-      router.replace("/login");
+      router.replace(roleRedirectPath(role));
     }
   }, [loading, role, router, session]);
 
@@ -47,7 +54,11 @@ function MemberDashboard() {
     },
   });
 
-  const { data: checkins = [] } = useQuery<Checkin[]>({
+  const {
+    data: checkins = [],
+    isLoading: checkinsLoading,
+    isError: checkinsError,
+  } = useQuery<Checkin[]>({
     queryKey: ["member-checkins", member?.id],
     enabled: !!member?.id,
     queryFn: async () => {
@@ -63,11 +74,11 @@ function MemberDashboard() {
 
   const generateToken = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabaseBrowser.functions.invoke("generate_qr_token");
-      if (error) {
-        throw error;
+      const response = await callEdgeFunction<{ token: string; expires_at: string }>("generate_qr_token");
+      if (response.error || !response.data) {
+        throw new Error(response.error ?? "Unable to generate token");
       }
-      return data as { token: string; expires_at: string };
+      return response.data;
     },
     onSuccess: (data) => {
       setToken(data.token, data.expires_at);
@@ -75,11 +86,7 @@ function MemberDashboard() {
     },
   });
 
-  const expiresInSeconds = useMemo(() => {
-    if (!expiresAt) return null;
-    const diff = Math.max(0, Math.floor((new Date(expiresAt).getTime() - now) / 1000));
-    return diff;
-  }, [expiresAt, now]);
+  const expiresInSeconds = useMemo(() => secondsUntil(expiresAt, now), [expiresAt, now]);
 
   useEffect(() => {
     if (expiresInSeconds !== null && expiresInSeconds <= 0) {
@@ -104,6 +111,9 @@ function MemberDashboard() {
             <div className="mt-4">
               <QRDisplay token={token} expiresInSeconds={expiresInSeconds} />
             </div>
+            {generateToken.isError ? (
+              <p className="mt-3 text-sm text-rose-400">{generateToken.error?.message ?? "Token generation failed."}</p>
+            ) : null}
             <button
               onClick={() => generateToken.mutate()}
               className="mt-4 rounded-lg bg-cyan-500 text-slate-950 px-4 py-2 font-semibold hover:bg-cyan-400"
@@ -122,6 +132,8 @@ function MemberDashboard() {
         </section>
         <section>
           <CheckinsList checkins={checkins} title="Visit History" />
+          {checkinsLoading ? <p className="mt-3 text-sm text-slate-400">Loading visits...</p> : null}
+          {checkinsError ? <p className="mt-3 text-sm text-rose-400">Unable to load visits.</p> : null}
         </section>
       </main>
     </div>

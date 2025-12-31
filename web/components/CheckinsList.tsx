@@ -1,11 +1,7 @@
 "use client";
 
 import type { Checkin } from "../lib/types";
-
-const formatTime = (timestamp: string) => {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-};
+import { formatTime } from "../lib/time";
 
 type CheckinsListProps = {
   checkins: Checkin[];

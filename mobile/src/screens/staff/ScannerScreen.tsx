@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "../../lib/supabase";
 import { colors, spacing, fontSize } from "../../styles/theme";
 import { useToastStore } from "../../store/useSessionStore";
+import { callEdgeFunction } from "../../lib/api";
 
 export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -13,13 +13,11 @@ export default function ScannerScreen() {
 
   const validateToken = useMutation({
     mutationFn: async (token: string) => {
-      const { data, error } = await supabase.functions.invoke("validate_qr_token", {
-        body: { token },
-      });
-      if (error) {
-        throw error;
+      const response = await callEdgeFunction<{ checkin_id: string }>("validate_qr_token", { body: { token } });
+      if (response.error || !response.data) {
+        throw new Error(response.error ?? "Unable to validate token");
       }
-      return data as { checkin_id: string };
+      return response.data;
     },
     onSuccess: () => {
       setToast("Check-in confirmed!", "success");
