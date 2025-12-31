@@ -112,22 +112,45 @@ Deno.serve(async (req) => {
     return jsonResponse(200, { promoted: false, remaining: 0 });
   }
 
-  const { data: waitlistEntry } = await serviceClient
+  const { data: waitlistEntries } = await serviceClient
     .from("class_waitlist")
     .select("id, member_id, position, joined_at")
     .eq("class_instance_id", instance.id)
     .eq("status", "waiting")
     .order("position", { ascending: true })
     .order("joined_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(10);
 
-  if (!waitlistEntry) {
+  let waitlistEntry: typeof waitlistEntries[number] | undefined;
+
+  if (!waitlistEntries?.length) {
     return jsonResponse(200, { promoted: false });
   }
 
   // TODO: add waitlist expiry windows and member confirmation windows
   // TODO: priority tiers / loyalty weighting
+
+  for (const entry of waitlistEntries ?? []) {
+    const { data: accessInfo, error: accessError } = await serviceClient.rpc("resolve_member_gym_access", {
+      p_member_id: entry.member_id,
+      p_gym_id: instance.gym_id,
+    });
+
+    if (accessError || !accessInfo?.has_access || accessInfo?.status !== "ACTIVE") {
+      await serviceClient
+        .from("class_waitlist")
+        .update({ status: "removed", removed_at: new Date().toISOString() })
+        .eq("id", entry.id);
+      continue;
+    }
+
+    waitlistEntry = entry;
+    break;
+  }
+
+  if (!waitlistEntry) {
+    return jsonResponse(200, { promoted: false });
+  }
 
   const { data: access } = await serviceClient
     .from("member_subscriptions")

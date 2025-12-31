@@ -78,8 +78,21 @@ Deno.serve(async (req) => {
     return jsonResponse(404, { error: "class_instance_not_found" });
   }
 
-  if (instance.gym_id !== member.gym_id) {
-    return jsonResponse(403, { error: "gym_mismatch" });
+  if (!instance.gym_id) {
+    return jsonResponse(400, { error: "class_missing_gym" });
+  }
+
+  const { data: accessInfo, error: accessError } = await serviceClient.rpc("resolve_member_gym_access", {
+    p_member_id: member.id,
+    p_gym_id: instance.gym_id,
+  });
+
+  if (accessError) {
+    return jsonResponse(500, { error: "gym_access_check_failed" });
+  }
+
+  if (!accessInfo?.has_access || accessInfo?.status !== "ACTIVE") {
+    return jsonResponse(403, { error: "no_gym_access" });
   }
 
   if (instance.status !== "scheduled") {
@@ -135,7 +148,7 @@ Deno.serve(async (req) => {
     .insert({
       member_id: member.id,
       class_instance_id: instance.id,
-      gym_id: member.gym_id,
+      gym_id: instance.gym_id,
       position: nextPosition,
       status: "waiting",
     })

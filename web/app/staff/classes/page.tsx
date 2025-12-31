@@ -8,8 +8,7 @@ import Header from "../../../components/Header";
 import { supabaseBrowser } from "../../../lib/supabase-browser";
 import { loadSessionAndRole, useAuthStore } from "../../../lib/auth";
 import { isStaffRole, roleRedirectPath } from "../../../lib/roles";
-
-type StaffProfile = { id: string; gym_id: string };
+import { useActiveGym } from "../../../lib/useActiveGym";
 
 type InstructorProfile = { id: string; gym_id: string };
 
@@ -35,8 +34,8 @@ const queryClient = new QueryClient({
 function ClassesList() {
   const router = useRouter();
   const { session, role, loading } = useAuthStore();
-  const [gymId, setGymId] = useState<string | null>(null);
   const [instructorId, setInstructorId] = useState<string | null>(null);
+  const { activeGymId, gyms, setActiveGym, loading: gymsLoading } = useActiveGym();
 
   useEffect(() => {
     loadSessionAndRole();
@@ -47,19 +46,6 @@ function ClassesList() {
       router.replace(roleRedirectPath(role));
     }
   }, [loading, role, router, session]);
-
-  const { data: staffProfile } = useQuery<StaffProfile | null>({
-    queryKey: ["staff-profile", session?.user.id],
-    enabled: !!session?.user.id && isStaffRole(role),
-    queryFn: async () => {
-      const { data } = await supabaseBrowser
-        .from("staff")
-        .select("id, gym_id")
-        .eq("user_id", session?.user.id ?? "")
-        .maybeSingle();
-      return (data ?? null) as StaffProfile | null;
-    },
-  });
 
   const { data: instructorProfile } = useQuery<InstructorProfile | null>({
     queryKey: ["instructor-profile", session?.user.id],
@@ -76,23 +62,16 @@ function ClassesList() {
   });
 
   useEffect(() => {
-    if (staffProfile?.gym_id) {
-      setGymId(staffProfile.gym_id);
-      setInstructorId(null);
-      return;
-    }
-
     if (instructorProfile?.gym_id) {
-      setGymId(instructorProfile.gym_id);
       setInstructorId(instructorProfile.id);
     }
-  }, [staffProfile, instructorProfile]);
+  }, [instructorProfile]);
 
   const today = useMemo(() => new Date().toISOString(), []);
 
   const { data: instances = [], isLoading } = useQuery<ClassInstance[]>({
-    queryKey: ["staff-classes", gymId, instructorId],
-    enabled: !!gymId,
+    queryKey: ["staff-classes", activeGymId, instructorId],
+    enabled: !!activeGymId,
     queryFn: async () => {
       let query = supabaseBrowser
         .from("class_instances")
@@ -104,8 +83,8 @@ function ClassesList() {
 
       if (instructorId) {
         query = query.eq("class_schedules.instructor_id", instructorId);
-      } else if (gymId) {
-        query = query.eq("gym_id", gymId);
+      } else if (activeGymId) {
+        query = query.eq("gym_id", activeGymId);
       }
 
       const { data } = await query;
@@ -161,12 +140,28 @@ function ClassesList() {
     <div className="min-h-screen bg-slate-950 text-white">
       <Header />
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">Upcoming Classes</h1>
             <p className="text-sm text-slate-400">Manage rosters, attendance, and updates.</p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            {gyms.map((gym) => (
+              <button
+                key={gym.id}
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  activeGymId === gym.id ? "border-cyan-400 bg-cyan-500/10 text-cyan-200" : "border-slate-800 text-slate-300"
+                }`}
+                onClick={() => setActiveGym(gym.id)}
+              >
+                {gym.code ?? gym.name}
+              </button>
+            ))}
+          </div>
         </div>
+        {!gymsLoading && gyms.length === 0 ? (
+          <p className="mt-6 text-sm text-slate-400">No gym access found. Contact an admin.</p>
+        ) : null}
         {isLoading ? <p className="mt-6 text-sm text-slate-400">Loading classes...</p> : null}
         {!isLoading && instances.length === 0 ? (
           <p className="mt-6 text-sm text-slate-400">No upcoming classes found.</p>

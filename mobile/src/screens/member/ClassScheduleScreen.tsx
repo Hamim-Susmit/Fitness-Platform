@@ -28,6 +28,7 @@ import {
 import { useMemberProfile } from "../../lib/useBilling";
 import { useSessionStore } from "../../store/useSessionStore";
 import type { MemberStackParamList } from "../../navigation/member";
+import { useActiveGym } from "../../lib/useActiveGym";
 
 // TODO: Add calendar grid view for class browsing.
 // TODO: Add class reminders and notifications.
@@ -81,7 +82,8 @@ export default function ClassScheduleScreen() {
 
   const { data: member } = useMemberProfile(session?.user.id);
   const { data: accessState } = useMemberAccessState(member?.id);
-  const { data: classTypes = [] } = useClassTypes(member?.gym_id);
+  const { activeGymId, gyms, setActiveGym, loading: gymsLoading } = useActiveGym();
+  const { data: classTypes = [] } = useClassTypes(activeGymId ?? undefined);
   const dateRange = useMemo(() => formatDateRange(dateFilter), [dateFilter]);
   const filter = useMemo(
     () => ({
@@ -98,7 +100,7 @@ export default function ClassScheduleScreen() {
     isError,
     isFetching,
     refetch,
-  } = useClassInstances(member?.gym_id, filter);
+  } = useClassInstances(activeGymId ?? undefined, filter);
 
   const instanceIds = useMemo(() => instances.map((instance) => instance.id), [instances]);
   const { data: bookings = [] } = useMemberBookings(member?.id, instanceIds);
@@ -200,6 +202,21 @@ export default function ClassScheduleScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.filters}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+          {gyms.map((gym) => (
+            <Pressable
+              key={gym.id}
+              onPress={() => setActiveGym(gym.id)}
+              style={[styles.filterChip, activeGymId === gym.id && styles.filterChipActive]}
+            >
+              <Text style={[styles.filterChipText, activeGymId === gym.id && styles.filterChipTextActive]}>
+                {gym.code ?? gym.name}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
       {isRestricted ? (
         <View style={styles.bannerError}>
           <Text style={styles.bannerText}>Access restricted — update billing to book classes.</Text>
@@ -244,6 +261,10 @@ export default function ClassScheduleScreen() {
           ))}
         </ScrollView>
       </View>
+      {!gymsLoading && gyms.length === 0 ? (
+        <Text style={styles.helper}>No gym access found. Please contact staff.</Text>
+      ) : null}
+      {!activeGymId && gyms.length > 0 ? <Text style={styles.helper}>Select a gym to view classes.</Text> : null}
       {isFetching ? <Text style={styles.helper}>Updating schedule...</Text> : null}
       {isError && instances.length === 0 ? (
         <Text style={styles.helper}>Unable to load classes. Check your connection.</Text>
