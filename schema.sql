@@ -1298,16 +1298,21 @@ using (public.is_instance_instructor(class_instance_id));
 create materialized view if not exists public.class_insights_mv as
 select
   ci.id as instance_id,
-  cs.class_type_id as class_id,
+  cs.class_type_id as class_type_id,
   ci.gym_id,
   ci.class_date as date,
   ci.capacity,
   count(cb.id) filter (where cb.status = 'booked') as booked_count,
   count(cw.id) filter (where cw.status = 'waiting') as waitlist_count,
   count(cb.id) filter (where cb.attendance_status = 'checked_in') as attendance_count,
-  greatest(count(cb.id) filter (where cb.status = 'booked') - count(cb.id) filter (where cb.attendance_status = 'checked_in'), 0) as no_show_count,
+  greatest(
+    count(cb.id) filter (where cb.status = 'booked')
+      - count(cb.id) filter (where cb.attendance_status = 'checked_in'),
+    0
+  ) as no_show_count,
   (count(cb.id) filter (where cb.status = 'booked')::numeric / nullif(ci.capacity, 0)) as fill_rate,
-  (count(cb.id) filter (where cb.attendance_status = 'checked_in')::numeric / nullif(count(cb.id) filter (where cb.status = 'booked'), 0)) as attendance_rate
+  (count(cb.id) filter (where cb.attendance_status = 'checked_in')::numeric
+    / nullif(count(cb.id) filter (where cb.status = 'booked'), 0)) as attendance_rate
 from public.class_instances ci
 join public.class_schedules cs on cs.id = ci.schedule_id
 left join public.class_bookings cb on cb.class_instance_id = ci.id
@@ -1317,23 +1322,30 @@ group by ci.id, cs.class_type_id, ci.gym_id, ci.class_date, ci.capacity;
 create unique index if not exists class_insights_mv_instance_id
   on public.class_insights_mv (instance_id);
 
+create index if not exists class_insights_mv_gym_date_idx
+  on public.class_insights_mv (gym_id, date);
+
 create materialized view if not exists public.class_type_performance_mv as
 select
-  ci.class_id as class_type_id,
+  ci.class_type_id,
   ci.gym_id,
   count(ci.instance_id) as total_sessions,
   avg(ci.fill_rate) as avg_fill_rate,
   avg(ci.waitlist_count) as avg_waitlist_count,
   avg(ci.attendance_rate) as avg_attendance_rate
 from public.class_insights_mv ci
-group by ci.class_id, ci.gym_id;
+group by ci.class_type_id, ci.gym_id;
 
 create unique index if not exists class_type_performance_mv_idx
   on public.class_type_performance_mv (class_type_id, gym_id);
 
+create index if not exists class_type_performance_mv_gym_idx
+  on public.class_type_performance_mv (gym_id, class_type_id);
+
 create materialized view if not exists public.instructor_performance_mv as
 select
   cs.instructor_id,
+  ci.gym_id,
   count(ci.instance_id) as total_sessions,
   avg(ci.attendance_rate) as avg_attendance_rate,
   avg(ci.fill_rate) as avg_fill_rate,
@@ -1342,10 +1354,88 @@ from public.class_insights_mv ci
 join public.class_instances inst on inst.id = ci.instance_id
 join public.class_schedules cs on cs.id = inst.schedule_id
 where cs.instructor_id is not null
-group by cs.instructor_id;
+group by cs.instructor_id, ci.gym_id;
 
 create unique index if not exists instructor_performance_mv_idx
-  on public.instructor_performance_mv (instructor_id);
+  on public.instructor_performance_mv (instructor_id, gym_id);
+
+create index if not exists instructor_performance_mv_gym_idx
+  on public.instructor_performance_mv (gym_id, instructor_id);
+
+create materialized view if not exists public.gym_performance_mv as
+with class_daily as (
+  select
+    gym_id,
+    date,
+    count(*) as total_classes,
+    avg(fill_rate) as avg_fill_rate,
+    avg(attendance_rate) as avg_attendance_rate,
+    sum(waitlist_count) as total_waitlisted,
+    sum(booked_count) as total_booked,
+    sum(no_show_count) as total_no_shows
+  from public.class_insights_mv
+  group by gym_id, date
+),
+checkins_daily as (
+  select
+    gym_id,
+    checked_in_at::date as date,
+    count(*) as total_checkins,
+    count(distinct member_id) as unique_members
+  from public.checkins
+  group by gym_id, checked_in_at::date
+),
+combined as (
+  select
+    coalesce(cd.gym_id, ch.gym_id) as gym_id,
+    coalesce(cd.date, ch.date) as period_start,
+    coalesce(cd.date, ch.date) as period_end,
+    ch.total_checkins,
+    ch.unique_members,
+    cd.total_classes,
+    cd.avg_fill_rate,
+    cd.avg_attendance_rate,
+    cd.total_waitlisted,
+    cd.total_booked,
+    cd.total_no_shows
+  from class_daily cd
+  full outer join checkins_daily ch
+    on cd.gym_id = ch.gym_id and cd.date = ch.date
+)
+select
+  gym_id,
+  period_start,
+  period_end,
+  coalesce(total_checkins, 0) as total_checkins,
+  coalesce(unique_members, 0) as unique_members,
+  case
+    when coalesce(unique_members, 0) = 0 then 0
+    else total_checkins::numeric / nullif(unique_members, 0)
+  end as avg_checkins_per_member,
+  avg_fill_rate,
+  avg_attendance_rate,
+  coalesce(total_classes, 0) as total_classes,
+  coalesce(total_waitlisted, 0) as total_waitlisted,
+  case
+    when coalesce(total_booked, 0) = 0 then 0
+    else total_no_shows::numeric / nullif(total_booked, 0)
+  end as no_show_rate
+from combined;
+
+create unique index if not exists gym_performance_mv_gym_date_idx
+  on public.gym_performance_mv (gym_id, period_start);
+
+create or replace function public.refresh_gym_performance(gym_id uuid, from_date date, to_date date)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- TODO: Replace with incremental refresh strategy once supported.
+  refresh materialized view public.gym_performance_mv;
+end;
+$$;
 
 create or replace function public.refresh_class_insights(instance_id uuid)
 returns void

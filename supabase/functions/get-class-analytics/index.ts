@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
     let query = serviceClient
       .from("class_insights_mv")
       .select("fill_rate, waitlist_count, attendance_rate")
-      .eq("class_id", payload.class_type_id)
+      .eq("class_type_id", payload.class_type_id)
       .gte("date", range.start)
       .lte("date", range.end);
 
@@ -396,6 +396,8 @@ Deno.serve(async (req) => {
 
     if (actor.instructorId) {
       instructorQuery = instructorQuery.eq("instructor_id", actor.instructorId);
+    } else {
+      instructorQuery = instructorQuery.eq("gym_id", payload.gym_id);
     }
 
     const { data: instructorPerf } = await instructorQuery;
