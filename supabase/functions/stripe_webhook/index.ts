@@ -89,6 +89,7 @@ async function insertTransaction(
     currency,
     stripe_payment_intent_id: paymentIntentId,
     status,
+    refund_amount_cents: 0,
   });
 }
 
@@ -171,10 +172,46 @@ Deno.serve(async (req) => {
         const subscription = event.data.object as Stripe.Subscription;
         const memberId = subscription.metadata?.member_id;
 
+        const stripePriceId = subscription.items.data[0]?.price?.id ?? null;
+        let newPlanId: string | null = null;
+        if (stripePriceId) {
+          const { data: plan } = await serviceClient
+            .from("pricing_plans")
+            .select("id")
+            .eq("stripe_price_id", stripePriceId)
+            .maybeSingle();
+          newPlanId = plan?.id ?? null;
+        }
+
+        const { data: existingSub } = await serviceClient
+          .from("subscriptions")
+          .select("id, pricing_plan_id, previous_pricing_plan_id")
+          .eq("stripe_subscription_id", subscription.id)
+          .maybeSingle();
+
+        const internalStatus = mapStripeStatusToInternalStatus(subscription.status);
+
         if (memberId) {
           await updateSubscriptionAndMemberStatus(serviceClient, subscription, memberId);
-        } else {
-          const internalStatus = mapStripeStatusToInternalStatus(subscription.status);
+        }
+
+        if (existingSub?.id && newPlanId && existingSub.pricing_plan_id !== newPlanId) {
+          await serviceClient
+            .from("subscriptions")
+            .update({
+              previous_pricing_plan_id: existingSub.pricing_plan_id ?? existingSub.previous_pricing_plan_id,
+              pricing_plan_id: newPlanId,
+              status: internalStatus,
+              current_period_start: subscription.current_period_start
+                ? new Date(subscription.current_period_start * 1000).toISOString()
+                : null,
+              current_period_end: subscription.current_period_end
+                ? new Date(subscription.current_period_end * 1000).toISOString()
+                : null,
+              cancel_at_period_end: subscription.cancel_at_period_end ?? false,
+            })
+            .eq("id", existingSub.id);
+        } else if (existingSub?.id) {
           await serviceClient
             .from("subscriptions")
             .update({
@@ -187,7 +224,7 @@ Deno.serve(async (req) => {
                 : null,
               cancel_at_period_end: subscription.cancel_at_period_end ?? false,
             })
-            .eq("stripe_subscription_id", subscription.id);
+            .eq("id", existingSub.id);
         }
         break;
       }
@@ -302,9 +339,15 @@ Deno.serve(async (req) => {
         const paymentIntentId = charge.payment_intent as string | null;
 
         if (paymentIntentId) {
+          const refundAmount = charge.amount_refunded ?? charge.amount ?? 0;
+          const isFullRefund = refundAmount >= (charge.amount ?? 0);
+
           await serviceClient
             .from("transactions")
-            .update({ status: "refunded" })
+            .update({
+              refund_amount_cents: refundAmount,
+              status: isFullRefund ? "refunded" : "succeeded",
+            })
             .eq("stripe_payment_intent_id", paymentIntentId);
         }
         break;

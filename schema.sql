@@ -111,11 +111,13 @@ create table if not exists public.subscriptions (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.members (id) on delete cascade,
   pricing_plan_id uuid references public.pricing_plans (id) on delete restrict,
+  previous_pricing_plan_id uuid references public.pricing_plans (id),
   stripe_customer_id text,
   stripe_subscription_id text,
   status text not null check (status in ('active', 'trialing', 'past_due', 'canceled', 'unpaid')),
   delinquency_state text not null default 'none' check (delinquency_state in ('pending_retry', 'past_due', 'in_grace', 'canceled', 'recovered', 'none')),
   grace_period_until timestamptz,
+  plan_change_requested_at timestamptz,
   current_period_start timestamptz,
   current_period_end timestamptz,
   cancel_at_period_end boolean not null default false,
@@ -130,6 +132,8 @@ create table if not exists public.transactions (
   currency text not null default 'usd',
   stripe_payment_intent_id text,
   status text not null check (status in ('succeeded', 'failed', 'pending', 'refunded')),
+  refund_amount_cents integer not null default 0,
+  refund_reason text,
   created_at timestamptz not null default now()
 );
 

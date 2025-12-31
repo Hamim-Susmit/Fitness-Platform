@@ -5,6 +5,7 @@ import { useSessionStore } from "../../store/useSessionStore";
 import { colors, spacing, fontSize } from "../../styles/theme";
 import PlanCard from "../../components/PlanCard";
 import { useCheckoutSession, useMemberProfile, useMemberSubscription, usePortalSession, usePricingPlans } from "../../lib/useBilling";
+import { useSubscriptionActions } from "../../lib/useSubscriptionActions";
 
 export default function BillingScreen() {
   const { session } = useSessionStore();
@@ -13,6 +14,7 @@ export default function BillingScreen() {
   const plans = usePricingPlans();
   const checkout = useCheckoutSession();
   const portal = usePortalSession();
+  const { changePlan } = useSubscriptionActions();
 
   const currentPlanId = subscription.data?.pricing_plan_id ?? null;
 
@@ -66,17 +68,24 @@ export default function BillingScreen() {
             status={subscription.data?.status ?? null}
             isCurrent={plan.id === currentPlanId}
             loading={checkout.isPending && checkout.variables === plan.id}
-            onSelect={() =>
+            onSelect={() => {
+              if (subscription.data && (subscription.data.status === "active" || subscription.data.status === "trialing")) {
+                changePlan.mutate(plan.id);
+                return;
+              }
               checkout
                 .mutateAsync(plan.id)
                 .then(openUrl)
-                .catch(() => undefined)
-            }
+                .catch(() => undefined);
+            }}
           />
         ))
       )}
       {checkout.isError ? (
         <Text style={styles.error}>{checkout.error?.message ?? "Unable to start checkout."}</Text>
+      ) : null}
+      {changePlan.isError ? (
+        <Text style={styles.error}>{changePlan.error?.message ?? "Unable to change plan."}</Text>
       ) : null}
     </ScrollView>
   );

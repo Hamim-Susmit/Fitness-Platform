@@ -7,6 +7,7 @@ import BillingPlanCard from "../../../components/BillingPlanCard";
 import { loadSessionAndRole, useAuthStore } from "../../../lib/auth";
 import { roleRedirectPath } from "../../../lib/roles";
 import { useCheckoutSession, useMemberProfile, useMemberSubscription, usePortalSession, usePricingPlans } from "../../../lib/useBilling";
+import { useSubscriptionActions } from "../../../lib/useSubscriptionActions";
 
 export default function BillingPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function BillingPage() {
   const subscription = useMemberSubscription(memberProfile.data?.id ?? undefined);
   const checkout = useCheckoutSession();
   const portal = usePortalSession();
+  const { changePlan } = useSubscriptionActions();
 
   useEffect(() => {
     loadSessionAndRole();
@@ -82,17 +84,24 @@ export default function BillingPage() {
                 status={subscription.data?.status ?? null}
                 isCurrent={plan.id === currentPlanId}
                 loading={checkout.isPending && checkout.variables === plan.id}
-                onSelect={() =>
+                onSelect={() => {
+                  if (subscription.data && (subscription.data.status === "active" || subscription.data.status === "trialing")) {
+                    changePlan.mutate(plan.id);
+                    return;
+                  }
                   checkout
                     .mutateAsync(plan.id)
                     .then((url) => window.location.assign(url))
-                    .catch(() => undefined)
-                }
+                    .catch(() => undefined);
+                }}
               />
             ))
           )}
           {checkout.isError ? (
             <p className="text-sm text-rose-400">{checkout.error?.message ?? "Unable to start checkout."}</p>
+          ) : null}
+          {changePlan.isError ? (
+            <p className="text-sm text-rose-400">{changePlan.error?.message ?? "Unable to change plan."}</p>
           ) : null}
         </section>
       </main>
