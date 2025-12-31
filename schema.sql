@@ -148,6 +148,36 @@ create table if not exists public.stripe_events (
   created_at timestamptz not null default now()
 );
 
+create or replace view public.billing_history_view as
+select
+  s.member_id,
+  s.id as subscription_id,
+  i.id as invoice_id,
+  t.id as transaction_id,
+  s.current_period_start as period_start,
+  s.current_period_end as period_end,
+  coalesce(t.amount_cents, i.amount_due_cents) as amount_cents,
+  coalesce(t.currency, 'usd') as currency,
+  case
+    when t.status = 'succeeded' then 'paid'
+    when t.status = 'failed' then 'failed'
+    when t.status = 'refunded' then 'refunded'
+    when t.status = 'pending' then 'pending'
+    else 'pending'
+  end as status,
+  i.hosted_invoice_url,
+  i.pdf_url,
+  i.created_at
+from public.invoices i
+join public.subscriptions s on s.id = i.subscription_id
+left join lateral (
+  select t.*
+  from public.transactions t
+  where t.subscription_id = s.id
+  order by t.created_at desc
+  limit 1
+) t on true;
+
 create index if not exists idx_members_gym_id on public.members (gym_id);
 create index if not exists idx_members_user_id on public.members (user_id);
 create unique index if not exists idx_members_stripe_customer_id on public.members (stripe_customer_id) where stripe_customer_id is not null;
