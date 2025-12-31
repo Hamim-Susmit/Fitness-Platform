@@ -11,10 +11,52 @@ type PromoteRequest = {
   class_instance_id?: string;
 };
 
+type InstanceRow = {
+  id: string;
+  gym_id: string;
+  capacity: number;
+  status: string;
+  start_at: string;
+  class_schedules: { class_types: { name: string } | null } | null;
+};
+
 function jsonResponse(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function enqueueWaitlistPromotion(serviceClient: ReturnType<typeof createClient>, memberId: string, instance: InstanceRow) {
+  const { data: member } = await serviceClient
+    .from("members")
+    .select("id, user_id")
+    .eq("id", memberId)
+    .maybeSingle();
+
+  if (!member?.user_id) {
+    return;
+  }
+
+  const { data: preferences } = await serviceClient
+    .from("notification_preferences")
+    .select("waitlist_notifications_enabled")
+    .eq("user_id", member.user_id)
+    .maybeSingle();
+
+  if (preferences?.waitlist_notifications_enabled === false) {
+    return;
+  }
+
+  await serviceClient.from("notifications").insert({
+    user_id: member.user_id,
+    type: "WAITLIST_PROMOTED",
+    status: "queued",
+    payload: {
+      class_instance_id: instance.id,
+      start_time: instance.start_at,
+      class_name: instance.class_schedules?.class_types?.name ?? "Class",
+    },
   });
 }
 
@@ -45,7 +87,7 @@ Deno.serve(async (req) => {
 
   const { data: instance } = await serviceClient
     .from("class_instances")
-    .select("id, gym_id, capacity, status")
+    .select("id, gym_id, capacity, status, start_at, class_schedules(class_types(name))")
     .eq("id", payload.class_instance_id)
     .maybeSingle();
 
@@ -85,7 +127,6 @@ Deno.serve(async (req) => {
   }
 
   // TODO: add waitlist expiry windows and member confirmation windows
-  // TODO: send push/email notification on promotion
   // TODO: priority tiers / loyalty weighting
 
   const { data: access } = await serviceClient
@@ -115,6 +156,8 @@ Deno.serve(async (req) => {
       .update({ status: "promoted", promoted_at: new Date().toISOString() })
       .eq("id", waitlistEntry.id);
 
+    await enqueueWaitlistPromotion(serviceClient, waitlistEntry.member_id, instance as InstanceRow);
+
     return jsonResponse(200, { promoted: true, member_id: waitlistEntry.member_id, existing: true });
   }
 
@@ -138,6 +181,8 @@ Deno.serve(async (req) => {
     .from("class_waitlist")
     .update({ status: "promoted", promoted_at: new Date().toISOString() })
     .eq("id", waitlistEntry.id);
+
+  await enqueueWaitlistPromotion(serviceClient, waitlistEntry.member_id, instance as InstanceRow);
 
   console.log("waitlist_promoted", {
     member_id: waitlistEntry.member_id,

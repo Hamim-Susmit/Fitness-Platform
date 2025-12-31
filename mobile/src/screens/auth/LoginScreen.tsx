@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { fetchUserRole } from "../../lib/auth";
 import { useSessionStore } from "../../store/useSessionStore";
 import { colors, spacing, fontSize } from "../../styles/theme";
+import { registerPushToken } from "../../lib/push/registerPushToken";
 
 export default function LoginScreen() {
   const navigation = useNavigation();
@@ -20,6 +21,7 @@ export default function LoginScreen() {
       if (session?.user) {
         const nextRole = await fetchUserRole(session.user.id);
         setRole(nextRole);
+        registerPushToken(session.user.id);
       } else {
         setRole(null);
       }
@@ -49,6 +51,7 @@ export default function LoginScreen() {
     const nextRole = await fetchUserRole(data.session.user.id);
     setRole(nextRole);
     setSession(data.session);
+    registerPushToken(data.session.user.id);
     setSubmitting(false);
 
     if (nextRole === "member") {
