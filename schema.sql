@@ -86,6 +86,7 @@ create table if not exists public.checkin_tokens (
   token text not null unique,
   expires_at timestamptz not null,
   used_at timestamptz,
+  used boolean not null default false,
   created_at timestamptz not null default now(),
   created_by uuid not null references public.users (id) on delete restrict
 );
@@ -171,6 +172,75 @@ as $$
     where m.gym_id = gym_id
       and m.user_id = auth.uid()
   );
+$$;
+
+create or replace function public.complete_checkin(
+  p_token text,
+  p_staff_user_id uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_token record;
+  v_member record;
+  v_staff record;
+  v_checkin_id uuid;
+begin
+  select * into v_staff
+  from public.staff
+  where user_id = p_staff_user_id;
+
+  if v_staff is null then
+    raise exception 'staff_not_found';
+  end if;
+
+  select * into v_token
+  from public.checkin_tokens
+  where token = p_token
+  for update;
+
+  if v_token is null then
+    raise exception 'token_not_found';
+  end if;
+
+  if v_token.used or v_token.used_at is not null then
+    raise exception 'token_already_used';
+  end if;
+
+  if v_token.expires_at <= now() then
+    raise exception 'token_expired';
+  end if;
+
+  if v_token.gym_id <> v_staff.gym_id then
+    raise exception 'staff_gym_mismatch';
+  end if;
+
+  select * into v_member
+  from public.members
+  where id = v_token.member_id;
+
+  if v_member is null then
+    raise exception 'member_not_found';
+  end if;
+
+  if v_member.status <> 'active' then
+    raise exception 'member_inactive';
+  end if;
+
+  update public.checkin_tokens
+  set used = true,
+      used_at = now()
+  where id = v_token.id;
+
+  insert into public.checkins (member_id, gym_id, checked_in_at, source, staff_id)
+  values (v_member.id, v_token.gym_id, now(), 'qr', v_staff.id)
+  returning id into v_checkin_id;
+
+  return v_checkin_id;
+end;
 $$;
 
 alter table public.users enable row level security;
