@@ -111,13 +111,26 @@ export function useActiveGym() {
       .select("gym_id")
       .eq("user_id", session.user.id);
 
+    const { data: orgRoles } = await supabaseBrowser
+      .from("organization_roles")
+      .select("chain_id, role")
+      .eq("user_id", session.user.id);
+
     const staffGymIds = Array.from(new Set([...(staffRoles ?? []).map((row) => row.gym_id), ...(legacyStaff ?? []).map((row) => row.gym_id)]));
 
-    if (staffGymIds.length) {
+    const hasOrgRoles = (orgRoles ?? []).length > 0;
+
+    if (staffGymIds.length || hasOrgRoles) {
+      const { data: effectiveGyms } = await supabaseBrowser.rpc("resolve_user_effective_gyms", {
+        p_user_id: session.user.id,
+      });
+
+      const effectiveGymIds = Array.from(new Set((effectiveGyms ?? []).map((row: { gym_id: string }) => row.gym_id)));
+
       const { data: staffGyms } = await supabaseBrowser
         .from("gyms")
         .select("id, name, code, address")
-        .in("id", staffGymIds)
+        .in("id", effectiveGymIds)
         .eq("active", true);
 
       const resolvedGyms = (staffGyms ?? []) as GymOption[];

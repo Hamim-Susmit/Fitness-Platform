@@ -8,6 +8,7 @@ import { isStaffRole, roleRedirectPath } from "../../../../lib/roles";
 import { callEdgeFunction } from "../../../../lib/api";
 import { useClassInstance } from "../../../../lib/hooks/useClassInstance";
 import { useRosterActions } from "../../../../lib/hooks/useRosterActions";
+import { getUserRoleContext, canManageGym } from "../../../../lib/permissions/gymPermissions";
 
 // TODO: Instructor performance analytics.
 // TODO: Per-class revenue reporting.
@@ -35,6 +36,7 @@ function ClassManagementConsole() {
   const [endTime, setEndTime] = useState<string>("");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const [readOnlyAccess, setReadOnlyAccess] = useState(false);
 
   useEffect(() => {
     loadSessionAndRole();
@@ -54,10 +56,19 @@ function ClassManagementConsole() {
     }
   }, [instance]);
 
+  useEffect(() => {
+    const resolvePermissions = async () => {
+      if (!session?.user.id || !instance?.gym_id) return;
+      await getUserRoleContext(session.user.id);
+      setReadOnlyAccess(!canManageGym(instance.gym_id));
+    };
+    resolvePermissions();
+  }, [instance?.gym_id, session?.user.id]);
+
   const instanceStatus = instance?.status ?? "scheduled";
   const isCanceled = instanceStatus !== "scheduled";
   const isPast = instance ? new Date(instance.end_at).getTime() < Date.now() : false;
-  const editsDisabled = isCanceled || isPast;
+  const editsDisabled = isCanceled || isPast || readOnlyAccess;
   const bookedCount = stats.bookedCount;
   const waitlistCount = stats.waitlistCount;
   const attendedCount = stats.attendedCount;

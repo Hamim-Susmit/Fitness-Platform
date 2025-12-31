@@ -76,6 +76,51 @@ export function useActiveGym() {
       .eq("user_id", session.user.id)
       .maybeSingle();
 
+    const { data: orgRoles } = await supabase
+      .from("organization_roles")
+      .select("chain_id, role")
+      .eq("user_id", session.user.id);
+
+    const hasOrgRoles = (orgRoles ?? []).length > 0;
+
+    if (hasOrgRoles) {
+      const { data: effectiveGyms } = await supabase.rpc("resolve_user_effective_gyms", {
+        p_user_id: session.user.id,
+      });
+
+      const effectiveGymIds = Array.from(new Set((effectiveGyms ?? []).map((row: { gym_id: string }) => row.gym_id)));
+
+      const { data: staffGyms } = await supabase
+        .from("gyms")
+        .select("id, name, code, address")
+        .in("id", effectiveGymIds)
+        .eq("active", true);
+
+      const resolvedGyms = (staffGyms ?? []) as GymOption[];
+      setGyms(resolvedGyms);
+
+      const fallbackGymId = resolveDefaultGymId({
+        gyms: resolvedGyms,
+        storedGymId,
+        homeGymId: member?.home_gym_id ?? null,
+      });
+
+      if (!resolvedGyms.length) {
+        setNotice("No active gym access — contact support.");
+      } else if (storedGymId && fallbackGymId && storedGymId !== fallbackGymId) {
+        setNotice("Your access to this location changed.");
+      }
+
+      setActiveGymId(fallbackGymId ?? null);
+      if (fallbackGymId) {
+        await AsyncStorage.setItem(STORAGE_KEY, fallbackGymId);
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      }
+      setLoading(false);
+      return;
+    }
+
     const { data: accessRows } = await supabase
       .from("member_gym_access")
       .select("gym_id, access_type, status, gyms(id, name, code, address)")
