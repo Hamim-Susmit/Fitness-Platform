@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Gym Membership",
+    "slug": "gym-membership",
+    "version": "1.0.0",
+    "scheme": "gymmembership",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "plugins": [
+      "expo-camera"
+    ]
+  }
+}
