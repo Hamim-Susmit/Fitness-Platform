@@ -141,6 +141,8 @@ Deno.serve(async (req) => {
     return jsonResponse(403, { error: "access_restricted" });
   }
 
+  // Access decisions rely on current member_subscriptions + derive_member_gym_access_from_subscription.
+  // TODO: ensure Stripe webhooks re-run derive_member_gym_access_from_subscription on plan changes.
   const { data: accessInfo, error: accessError } = await serviceClient.rpc("resolve_member_gym_access", {
     p_member_id: member.id,
     p_gym_id: tokenRecord.gym_id,

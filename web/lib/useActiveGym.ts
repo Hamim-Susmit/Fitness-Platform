@@ -20,7 +20,7 @@ type GymAddress = {
   postal_code?: string;
 };
 
-type GymOption = { id: string; name: string; code: string | null; address?: GymAddress | null };
+type GymOption = { id: string; name: string; code: string | null; address?: GymAddress | null; chain_id?: string | null };
 
 export function useActiveGym() {
   const { session } = useAuthStore();
@@ -129,7 +129,7 @@ export function useActiveGym() {
 
       const { data: staffGyms } = await supabaseBrowser
         .from("gyms")
-        .select("id, name, code, address")
+        .select("id, name, code, address, chain_id")
         .in("id", effectiveGymIds)
         .eq("active", true);
 
@@ -165,7 +165,7 @@ export function useActiveGym() {
     if (hasAllAccess) {
       const { data: allGyms } = await supabaseBrowser
         .from("gyms")
-        .select("id, name, code, address")
+        .select("id, name, code, address, chain_id")
         .eq("active", true);
       resolvedGyms = (allGyms ?? []) as GymOption[];
     } else {

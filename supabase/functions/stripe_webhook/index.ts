@@ -106,6 +106,8 @@ async function resolveSubscriptionId(
 }
 
 Deno.serve(async (req) => {
+  // TODO: re-run derive_member_gym_access_from_subscription when subscription status changes.
+  // TODO: handle graceful downgrade/upgrade flows and prorations for location-based pricing.
   if (req.method !== "POST") {
     return jsonResponse(405, { error: "method_not_allowed" });
   }

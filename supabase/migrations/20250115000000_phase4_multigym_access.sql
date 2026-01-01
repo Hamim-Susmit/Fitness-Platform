@@ -89,6 +89,8 @@ AS $$
 DECLARE
   v_access record;
 BEGIN
+  -- Access is derived from the active member_subscriptions plan configuration.
+  -- When subscriptions change (canceled/expired), re-run derive_member_gym_access_from_subscription.
   -- Prefer direct access record for gym.
   SELECT access_type, status
   INTO v_access
