@@ -240,6 +240,24 @@ Deno.serve(async (req) => {
     p_subscription_id: subscriptionRow?.id,
   });
 
+  // Analytics event: subscription.created
+  try {
+    await serviceClient.rpc("log_analytics_event", {
+      p_event_type: "subscription.created",
+      p_user_id: user.id,
+      p_member_id: member.id,
+      p_gym_id: payload.gym_id,
+      p_source: "web",
+      p_context: {
+        subscription_id: subscriptionRow?.id,
+        plan_id: payload.plan_id,
+        gym_id: payload.gym_id,
+      },
+    });
+  } catch (error) {
+    console.log("analytics_event_failed", error);
+  }
+
   const paymentIntent = stripeSubscription.latest_invoice?.payment_intent;
   const clientSecret =
     typeof paymentIntent === "object" && paymentIntent !== null ? paymentIntent.client_secret : null;

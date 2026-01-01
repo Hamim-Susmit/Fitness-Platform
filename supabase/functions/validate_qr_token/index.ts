@@ -221,6 +221,21 @@ Deno.serve(async (req) => {
     return jsonResponse(403, { error: accessDecision, checkin_id: checkinRow?.id, decision_reason: decisionReason });
   }
 
+  // Analytics event: member.checkin.created
+  try {
+    await serviceClient.rpc("log_analytics_event", {
+      p_event_type: "member.checkin.created",
+      p_user_id: member.user_id,
+      p_member_id: member.id,
+      p_staff_id: legacyStaff?.id ?? null,
+      p_gym_id: tokenRecord.gym_id,
+      p_source: "mobile",
+      p_context: { checkin_id: checkinRow?.id, gym_id: tokenRecord.gym_id },
+    });
+  } catch (error) {
+    console.log("analytics_event_failed", error);
+  }
+
   return jsonResponse(200, {
     checkin_id: checkinRow?.id,
     access_decision: accessDecision,

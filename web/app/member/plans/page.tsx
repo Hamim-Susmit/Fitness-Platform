@@ -7,6 +7,7 @@ import { roleRedirectPath } from "../../../lib/roles";
 import { supabaseBrowser } from "../../../lib/supabase-browser";
 import { useActiveGym } from "../../../lib/useActiveGym";
 import { callEdgeFunction } from "../../../lib/api";
+import { trackEvent } from "../../../lib/analytics";
 
 type MembershipPlan = {
   id: string;
@@ -163,6 +164,8 @@ function MemberPlansView() {
     setToast("Subscription created", "success");
     setTimeout(() => setToast(null, null), 3000);
     setCreatingPlanId(null);
+    // Placeholder for analytics event logging on subscription success.
+    trackEvent("subscription.created", { plan_id: planId, gym_id: activeGymId });
   };
 
   if (loading || loadingPlans) {

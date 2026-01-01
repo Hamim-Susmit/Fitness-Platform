@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { colors, spacing, fontSize } from "../../styles/theme";
 import { useToastStore } from "../../store/useSessionStore";
 import { callEdgeFunction } from "../../lib/api";
+import { trackEvent } from "../../lib/analytics";
 
 export default function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -19,9 +20,11 @@ export default function ScannerScreen() {
       }
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setToast("Check-in confirmed!", "success");
       setTimeout(() => setToast(null, null), 3000);
+      // Placeholder for analytics event logging on check-in success.
+      trackEvent("member.checkin.created", { checkin_id: data.checkin_id });
     },
     onError: (error) => {
       setToast(error.message ?? "Invalid token", "error");

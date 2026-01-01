@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { callEdgeFunction } from "./api";
+import { trackEvent } from "./analytics";
 
 export function useBookings() {
   const queryClient = useQueryClient();
@@ -14,9 +15,14 @@ export function useBookings() {
       }
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["class-instances"] });
       queryClient.invalidateQueries({ queryKey: ["class-bookings"] });
+      // Placeholder for analytics event logging on booking success.
+      trackEvent("class.booking.created", {
+        booking_id: (data as { booking?: { id?: string } }).booking?.id ?? null,
+        class_instance_id: (data as { class_instance?: { id?: string } }).class_instance?.id ?? null,
+      });
     },
   });
 

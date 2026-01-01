@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
 
   const { data: instance } = await serviceClient
     .from("class_instances")
-    .select("id, gym_id, capacity, status, start_at")
+    .select("id, gym_id, class_schedule_id, capacity, status, start_at")
     .eq("id", payload.class_instance_id)
     .maybeSingle();
 
@@ -157,6 +157,20 @@ Deno.serve(async (req) => {
     member_id: member.id,
     class_instance_id: instance.id,
   });
+
+  // Analytics event: class.booking.created
+  try {
+    await serviceClient.rpc("log_analytics_event", {
+      p_event_type: "class.booking.created",
+      p_user_id: member.user_id,
+      p_member_id: member.id,
+      p_gym_id: instance.gym_id,
+      p_source: "web",
+      p_context: { booking_id: booking?.id, class_instance_id: instance.id, schedule_id: instance.class_schedule_id },
+    });
+  } catch (error) {
+    console.log("analytics_event_failed", error);
+  }
 
   return jsonResponse(200, {
     booking,
