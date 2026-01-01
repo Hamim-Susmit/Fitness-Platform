@@ -121,6 +121,12 @@ function StaffPlansView() {
                       >
                         View location pricing
                       </button>
+                      <button
+                        className="ml-3 text-sm text-sky-300 hover:text-sky-200"
+                        onClick={() => router.push(`/staff/plans/${plan.id}/capacity`)}
+                      >
+                        View capacity limits
+                      </button>
                     </td>
                   </tr>
                 ))

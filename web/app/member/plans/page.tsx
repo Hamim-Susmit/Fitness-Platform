@@ -25,6 +25,8 @@ type PricingResponse = {
   stripe_price_id: string | null;
 };
 
+type CapacityStatus = "OK" | "NEAR_LIMIT" | "AT_CAPACITY" | "BLOCK_NEW";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 2, refetchOnWindowFocus: false },
@@ -57,6 +59,7 @@ function MemberPlansView() {
   const [pricingByPlan, setPricingByPlan] = useState<Record<string, PricingResponse>>({});
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [creatingPlanId, setCreatingPlanId] = useState<string | null>(null);
+  const [capacityStatus, setCapacityStatus] = useState<CapacityStatus>("OK");
 
   useEffect(() => {
     loadSessionAndRole();
@@ -126,7 +129,22 @@ function MemberPlansView() {
     resolvePricing();
   }, [activeGymId, plans]);
 
+  useEffect(() => {
+    const loadCapacityStatus = async () => {
+      if (!activeGymId) return;
+      const response = await callEdgeFunction<{ status: CapacityStatus }>("get-gym-capacity-status", {
+        body: { gym_id: activeGymId },
+      });
+      if (!response.error && response.data?.status) {
+        setCapacityStatus(response.data.status);
+      }
+    };
+    loadCapacityStatus();
+  }, [activeGymId]);
+
   const visiblePlans = useMemo(() => plans, [plans]);
+  const isLocationFull = capacityStatus === "BLOCK_NEW";
+  const showNearLimit = capacityStatus === "NEAR_LIMIT";
 
   const handleSelectPlan = async (planId: string) => {
     if (!activeGymId) return;
@@ -169,6 +187,15 @@ function MemberPlansView() {
             Choose a plan for your current location. Pricing updates automatically for the selected gym.
           </p>
         </div>
+        {isLocationFull ? (
+          <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            This location is currently full.
+          </div>
+        ) : showNearLimit ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            Limited spots remaining.
+          </div>
+        ) : null}
         <div className="grid gap-6 md:grid-cols-2">
           {visiblePlans.length ? (
             visiblePlans.map((plan) => {
@@ -190,9 +217,9 @@ function MemberPlansView() {
                   <button
                     className="w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
                     onClick={() => handleSelectPlan(plan.id)}
-                    disabled={creatingPlanId === plan.id}
+                    disabled={creatingPlanId === plan.id || isLocationFull}
                   >
-                    {creatingPlanId === plan.id ? "Creating..." : "Select Plan"}
+                    {isLocationFull ? "Location full" : creatingPlanId === plan.id ? "Creating..." : "Select Plan"}
                   </button>
                 </div>
               );

@@ -9,6 +9,8 @@ type PlanCardProps = {
   interval: "monthly" | "yearly";
   isCurrent: boolean;
   status?: string | null;
+  disabledReason?: string | null;
+  warningMessage?: string | null;
   onSelect: () => void;
   loading: boolean;
 };
@@ -22,9 +24,12 @@ export default function PlanCard({
   interval,
   isCurrent,
   status,
+  disabledReason,
+  warningMessage,
   onSelect,
   loading,
 }: PlanCardProps) {
+  const isDisabled = loading || isCurrent || Boolean(disabledReason);
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -38,13 +43,15 @@ export default function PlanCard({
         {formatPrice(priceCents)} <Text style={styles.interval}>/ {interval}</Text>
       </Text>
       {status && isCurrent ? <Text style={styles.status}>Status: {status}</Text> : null}
+      {warningMessage ? <Text style={styles.warning}>{warningMessage}</Text> : null}
+      {disabledReason ? <Text style={styles.disabledNote}>{disabledReason}</Text> : null}
       <Pressable
-        style={[styles.button, (loading || isCurrent) && styles.buttonDisabled]}
+        style={[styles.button, isDisabled && styles.buttonDisabled]}
         onPress={onSelect}
-        disabled={loading || isCurrent}
+        disabled={isDisabled}
       >
         <Text style={styles.buttonText}>
-          {isCurrent ? "Current Plan" : loading ? "Starting..." : "Subscribe / Change Plan"}
+          {isCurrent ? "Current Plan" : disabledReason ? "Unavailable" : loading ? "Starting..." : "Subscribe / Change Plan"}
         </Text>
       </Pressable>
     </View>
@@ -92,6 +99,14 @@ const styles = StyleSheet.create({
   status: {
     marginTop: spacing.xs,
     color: colors.textSecondary,
+  },
+  warning: {
+    marginTop: spacing.xs,
+    color: colors.warning,
+  },
+  disabledNote: {
+    marginTop: spacing.xs,
+    color: colors.error,
   },
   button: {
     marginTop: spacing.md,

@@ -4,13 +4,21 @@ import * as WebBrowser from "expo-web-browser";
 import { useSessionStore } from "../../store/useSessionStore";
 import { colors, spacing, fontSize } from "../../styles/theme";
 import PlanCard from "../../components/PlanCard";
-import { useCheckoutSession, useMemberProfile, useMemberSubscription, usePortalSession, usePricingPlans } from "../../lib/useBilling";
+import {
+  useCheckoutSession,
+  useGymCapacityStatus,
+  useMemberProfile,
+  useMemberSubscription,
+  usePortalSession,
+  usePricingPlans,
+} from "../../lib/useBilling";
 import { useSubscriptionActions } from "../../lib/useSubscriptionActions";
 
 export default function BillingScreen() {
   const { session } = useSessionStore();
   const memberProfile = useMemberProfile(session?.user.id);
   const subscription = useMemberSubscription(memberProfile.data?.id ?? undefined);
+  const capacityStatus = useGymCapacityStatus(memberProfile.data?.gym_id);
   const plans = usePricingPlans();
   const checkout = useCheckoutSession();
   const portal = usePortalSession();
@@ -22,10 +30,18 @@ export default function BillingScreen() {
     await WebBrowser.openAuthSessionAsync(url);
   };
 
+  const isLocationFull = capacityStatus.data?.status === "BLOCK_NEW";
+  const showNearLimit = capacityStatus.data?.status === "NEAR_LIMIT";
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Billing</Text>
       <Text style={styles.subtitle}>Manage your membership plan and payment details.</Text>
+      {isLocationFull ? (
+        <Text style={styles.error}>This location is currently full.</Text>
+      ) : showNearLimit ? (
+        <Text style={styles.warning}>Limited spots remaining.</Text>
+      ) : null}
 
       {subscription.isLoading ? (
         <Text style={styles.helper}>Loading subscription...</Text>
@@ -68,6 +84,8 @@ export default function BillingScreen() {
             status={subscription.data?.status ?? null}
             isCurrent={plan.id === currentPlanId}
             loading={checkout.isPending && checkout.variables === plan.id}
+            disabledReason={isLocationFull ? "This location is currently full." : null}
+            warningMessage={showNearLimit ? "Limited spots remaining." : null}
             onSelect={() => {
               if (subscription.data && (subscription.data.status === "active" || subscription.data.status === "trialing")) {
                 changePlan.mutate(plan.id);
@@ -111,6 +129,10 @@ const styles = StyleSheet.create({
   },
   error: {
     color: colors.error,
+    marginTop: spacing.md,
+  },
+  warning: {
+    color: colors.warning,
     marginTop: spacing.md,
   },
   portalButton: {

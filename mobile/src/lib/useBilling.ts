@@ -21,6 +21,8 @@ type Subscription = {
   pricing_plans?: { name: string; price_cents: number; interval: string } | null;
 };
 
+type CapacityStatus = "OK" | "NEAR_LIMIT" | "AT_CAPACITY" | "BLOCK_NEW";
+
 export function useMemberProfile(userId?: string) {
   return useQuery<MemberProfile | null>({
     queryKey: ["member-profile", userId],
@@ -32,6 +34,23 @@ export function useMemberProfile(userId?: string) {
         .eq("user_id", userId ?? "")
         .maybeSingle();
       return (data ?? null) as MemberProfile | null;
+    },
+  });
+}
+
+export function useGymCapacityStatus(gymId?: string) {
+  return useQuery<{ status: CapacityStatus } | null>({
+    queryKey: ["gym-capacity-status", gymId],
+    enabled: !!gymId,
+    queryFn: async () => {
+      if (!gymId) return null;
+      const response = await callEdgeFunction<{ status: CapacityStatus }>("get-gym-capacity-status", {
+        body: { gym_id: gymId },
+      });
+      if (response.error || !response.data) {
+        throw new Error(response.error ?? "Unable to load capacity status");
+      }
+      return response.data;
     },
   });
 }

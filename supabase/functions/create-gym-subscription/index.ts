@@ -146,6 +146,43 @@ Deno.serve(async (req) => {
     return jsonResponse(400, { error: "missing_stripe_price" });
   }
 
+  // Capacity enforcement must never rely on UI logic. Backend + SQL rules determine allowance.
+  const { data: capacityStatus, error: capacityError } = await serviceClient.rpc("get_gym_capacity_status", {
+    p_gym_id: payload.gym_id,
+  });
+
+  if (capacityError) {
+    console.log("capacity_status_failed", capacityError.message);
+    return jsonResponse(500, { error: "capacity_status_failed" });
+  }
+
+  const capacityStatusValue = (capacityStatus as { status?: string; hard_limit_enforced?: boolean } | null)?.status ?? "OK";
+  const hardLimitEnforced =
+    (capacityStatus as { hard_limit_enforced?: boolean } | null)?.hard_limit_enforced ?? false;
+
+  if (capacityStatusValue === "BLOCK_NEW") {
+    return jsonResponse(409, { error: "capacity_blocked", message: "This location is currently full." });
+  }
+
+  if (capacityStatusValue === "AT_CAPACITY" && hardLimitEnforced) {
+    return jsonResponse(409, { error: "capacity_blocked", message: "This location is currently full." });
+  }
+
+  const { data: planCapacity, error: planCapacityError } = await serviceClient.rpc("check_plan_capacity_for_gym", {
+    p_plan_id: payload.plan_id,
+    p_gym_id: payload.gym_id,
+  });
+
+  if (planCapacityError) {
+    console.log("plan_capacity_failed", planCapacityError.message);
+    return jsonResponse(500, { error: "plan_capacity_failed" });
+  }
+
+  const planCapacityStatus = (planCapacity as { status?: string } | null)?.status ?? "NO_LIMIT";
+  if (planCapacityStatus === "BLOCK_NEW" || planCapacityStatus === "AT_CAPACITY") {
+    return jsonResponse(409, { error: "plan_capacity_blocked", message: "This plan is full for the selected gym." });
+  }
+
   const customer =
     member.stripe_customer_id ??
     (await getOrCreateStripeCustomer(user.id, user.email ?? "member@fitness.local")).id;
@@ -211,5 +248,6 @@ Deno.serve(async (req) => {
     status: "created",
     subscription_id: subscriptionRow?.id,
     client_secret: clientSecret,
+    capacity_warning: capacityStatusValue === "NEAR_LIMIT",
   });
 });
