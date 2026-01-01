@@ -56,7 +56,40 @@ export const WorkoutInstanceSchema = z.object({
   source: WorkoutSourceSchema,
 });
 
+export const WorkoutExerciseSchema = z.object({
+  id: z.string().uuid(),
+  workout_id: z.string().uuid(),
+  exercise_id: z.string().uuid(),
+  order_index: z.number().int(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const WorkoutLogSchema = z.object({
+  id: z.string().uuid(),
+  workout_exercise_id: z.string().uuid(),
+  set_number: z.number().int(),
+  reps: z.number().int().nullable(),
+  weight: z.number().nullable(),
+  weight_unit: WorkoutWeightUnitSchema.nullable(),
+  rpe: z.number().nullable(),
+  notes: z.string().nullable(),
+  logged_at: z.string(),
+});
+
+export const WorkoutPrSchema = z.object({
+  id: z.string().uuid(),
+  member_id: z.string().uuid(),
+  exercise_id: z.string().uuid(),
+  pr_type: z.enum(["1RM", "MAX_WEIGHT", "MAX_REPS"]),
+  value: z.number(),
+  achieved_at: z.string(),
+});
+
 export type Exercise = z.infer<typeof ExerciseSchema>;
 export type WorkoutTemplate = z.infer<typeof WorkoutTemplateSchema>;
 export type WorkoutTemplateExercise = z.infer<typeof WorkoutTemplateExerciseSchema>;
 export type WorkoutInstance = z.infer<typeof WorkoutInstanceSchema>;
+export type WorkoutExercise = z.infer<typeof WorkoutExerciseSchema>;
+export type WorkoutLog = z.infer<typeof WorkoutLogSchema>;
+export type WorkoutPr = z.infer<typeof WorkoutPrSchema>;
