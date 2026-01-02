@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button, FlatList, Text, TextInput, View } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { computeGoalProgress } from "../../lib/goals/progress";
+import { evaluateGoalEvent } from "../../lib/gamification/engine";
 
 type GoalRow = {
   id: string;
@@ -84,6 +85,9 @@ export default function GoalDetailScreen({ goalId }: Props) {
 
   const markComplete = async () => {
     if (!goal) return;
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const { data } = await supabase
       .from("goals")
       .update({ status: "COMPLETED" })
@@ -93,6 +97,9 @@ export default function GoalDetailScreen({ goalId }: Props) {
 
     if (data) {
       setGoal(data as GoalRow);
+      if (user) {
+        await evaluateGoalEvent(user.id, goal.id);
+      }
     }
   };
 

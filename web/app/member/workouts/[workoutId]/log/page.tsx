@@ -7,6 +7,7 @@ import { loadSessionAndRole, useAuthStore } from "../../../../../lib/auth";
 import { roleRedirectPath } from "../../../../../lib/roles";
 import { supabaseBrowser } from "../../../../../lib/supabase-browser";
 import { deriveSetDisplayLabel } from "../../../../../lib/workouts/helpers";
+import { evaluateWorkoutEvent } from "../../../../../lib/gamification/engine";
 
 type ExerciseRow = {
   id: string;
@@ -146,6 +147,9 @@ function WorkoutLogView() {
     const completedAt = new Date().toISOString();
     await supabaseBrowser.from("workouts").update({ completed_at: completedAt }).eq("id", workoutId);
     setWorkout((prev) => (prev ? { ...prev, completed_at: completedAt } : prev));
+    if (session?.user.id) {
+      await evaluateWorkoutEvent(session.user.id, workoutId);
+    }
   };
 
   if (loading || loadingData) {

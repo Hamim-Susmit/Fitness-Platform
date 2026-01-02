@@ -7,6 +7,7 @@ import { loadSessionAndRole, useAuthStore } from "../../../../lib/auth";
 import { roleRedirectPath } from "../../../../lib/roles";
 import { supabaseBrowser } from "../../../../lib/supabase-browser";
 import { computeGoalProgress } from "../../../../lib/goals/progress";
+import { evaluateGoalEvent } from "../../../../lib/gamification/engine";
 
 type GoalRow = {
   id: string;
@@ -115,6 +116,9 @@ function GoalDetailView() {
 
     if (data) {
       setGoal(data as GoalRow);
+      if (session?.user.id) {
+        await evaluateGoalEvent(session.user.id, goal.id);
+      }
     }
   };
 

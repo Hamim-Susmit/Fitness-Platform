@@ -3,6 +3,7 @@ import { Button, ScrollView, Text, TextInput, View } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { deriveSetDisplayLabel } from "../../lib/workouts/helpers";
 import { queueWorkoutLogs, syncPendingWorkoutLogs } from "../../lib/offline/workoutSync";
+import { evaluateWorkoutEvent } from "../../lib/gamification/engine";
 
 type WorkoutExerciseRow = {
   id: string;
@@ -121,8 +122,15 @@ export default function LogWorkoutScreen({ workoutId }: Props) {
   };
 
   const completeWorkout = async () => {
-    await supabase.from("workouts").update({ completed_at: new Date().toISOString() }).eq("id", workoutId);
-    setWorkout((prev) => (prev ? { ...prev, completed_at: new Date().toISOString() } : prev));
+    const completedAt = new Date().toISOString();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    await supabase.from("workouts").update({ completed_at: completedAt }).eq("id", workoutId);
+    setWorkout((prev) => (prev ? { ...prev, completed_at: completedAt } : prev));
+    if (user) {
+      await evaluateWorkoutEvent(user.id, workoutId);
+    }
   };
 
   const syncOfflineLogs = async () => {
