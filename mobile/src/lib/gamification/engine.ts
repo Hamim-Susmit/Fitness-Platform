@@ -1,4 +1,5 @@
 import { supabase } from "../supabase";
+import { publishAchievementEvent, publishWorkoutEvent, publishGoalCompletedEvent } from "../social/events";
 
 const WORKOUT_THRESHOLDS = [1, 10, 50];
 const CHECKIN_THRESHOLDS = [10, 100];
@@ -78,6 +79,10 @@ export async function awardAchievement(memberId: string, achievementCode: string
     context_json: context ?? null,
   });
 
+  if (!error) {
+    await publishAchievementEvent(memberId, achievement.id);
+  }
+
   return !error;
 }
 
@@ -94,6 +99,8 @@ export async function evaluateWorkoutEvent(memberId: string, workoutId: string) 
       await awardAchievement(memberId, `WORKOUT_${threshold}`, { workout_id: workoutId });
     }
   }
+
+  await publishWorkoutEvent(memberId, workoutId);
 
   const streak = await updateStreak(memberId, "WORKOUTS", new Date().toISOString());
   for (const threshold of STREAK_THRESHOLDS) {
@@ -126,4 +133,5 @@ export async function evaluateCheckinEvent(memberId: string) {
 
 export async function evaluateGoalEvent(memberId: string, goalId: string) {
   await awardAchievement(memberId, "GOAL_COMPLETE", { goal_id: goalId });
+  await publishGoalCompletedEvent(memberId, goalId);
 }

@@ -312,6 +312,26 @@ Deno.serve(async (req) => {
     const streak = await updateStreak("CHECKINS");
     if (streak.current >= 7) await awardAchievement("STREAK_7", { streak_type: "CHECKINS" });
     if (streak.current >= 30) await awardAchievement("STREAK_30", { streak_type: "CHECKINS" });
+
+    if (checkinRow?.id) {
+      const { data: existingEvent } = await serviceClient
+        .from("activity_feed_events")
+        .select("id")
+        .eq("member_id", member.user_id)
+        .eq("event_type", "CHECKIN")
+        .eq("related_id", checkinRow.id)
+        .maybeSingle();
+
+      if (!existingEvent) {
+        await serviceClient.from("activity_feed_events").insert({
+          member_id: member.user_id,
+          event_type: "CHECKIN",
+          related_id: checkinRow.id,
+          payload_json: { gym_id: tokenRecord.gym_id, checked_in_at: new Date().toISOString() },
+          visibility: "FRIENDS_ONLY",
+        });
+      }
+    }
   } catch (error) {
     console.log("achievement_update_failed", error);
   }

@@ -1,4 +1,5 @@
 import { supabaseBrowser } from "../supabase-browser";
+import { publishAchievementEvent, publishWorkoutEvent, publishGoalCompletedEvent } from "../social/events";
 
 const WORKOUT_THRESHOLDS = [1, 10, 50];
 const CHECKIN_THRESHOLDS = [10, 100];
@@ -78,22 +79,28 @@ export async function awardAchievement(memberId: string, achievementCode: string
     context_json: context ?? null,
   });
 
+  if (!error) {
+    await publishAchievementEvent(memberId, achievement.id);
+  }
+
   return !error;
 }
 
 export async function evaluateWorkoutEvent(memberId: string, workoutId: string) {
-  const { data: workoutCountRow } = await supabaseBrowser
+  const { count } = await supabaseBrowser
     .from("workouts")
     .select("id", { count: "exact", head: true })
     .eq("member_id", memberId)
     .not("completed_at", "is", null);
 
-  const workoutCount = workoutCountRow?.length ?? 0;
+  const workoutCount = count ?? 0;
   for (const threshold of WORKOUT_THRESHOLDS) {
     if (workoutCount >= threshold) {
       await awardAchievement(memberId, `WORKOUT_${threshold}`, { workout_id: workoutId });
     }
   }
+
+  await publishWorkoutEvent(memberId, workoutId);
 
   const streak = await updateStreak(memberId, "WORKOUTS", new Date().toISOString());
   for (const threshold of STREAK_THRESHOLDS) {
@@ -126,4 +133,5 @@ export async function evaluateCheckinEvent(memberId: string) {
 
 export async function evaluateGoalEvent(memberId: string, goalId: string) {
   await awardAchievement(memberId, "GOAL_COMPLETE", { goal_id: goalId });
+  await publishGoalCompletedEvent(memberId, goalId);
 }
