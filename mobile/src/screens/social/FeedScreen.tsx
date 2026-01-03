@@ -14,13 +14,11 @@ type FeedEventRow = {
 type LikeRow = { event_id: string; member_id: string };
 
 type CommentRow = { event_id: string; member_id: string; comment_text: string; created_at: string };
-type ProfileRow = { id: string; full_name: string | null };
 
 export default function FeedScreen() {
   const [events, setEvents] = useState<FeedEventRow[]>([]);
   const [likes, setLikes] = useState<LikeRow[]>([]);
   const [comments, setComments] = useState<CommentRow[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +33,7 @@ export default function FeedScreen() {
     const rows = (data ?? []) as FeedEventRow[];
     const ids = rows.map((row) => row.id);
 
-    const [{ data: likeRows }, { data: commentRows }, { data: profileRows }] = await Promise.all([
+    const [{ data: likeRows }, { data: commentRows }] = await Promise.all([
       ids.length ? supabase.from("feed_likes").select("event_id, member_id").in("event_id", ids) : Promise.resolve({ data: [] }),
       ids.length
         ? supabase
@@ -44,24 +42,11 @@ export default function FeedScreen() {
             .in("event_id", ids)
             .order("created_at", { ascending: true })
         : Promise.resolve({ data: [] }),
-      ids.length
-        ? supabase
-            .from("users")
-            .select("id, full_name")
-            .in("id", rows.map((row) => row.member_id))
-        : Promise.resolve({ data: [] }),
     ]);
 
     setEvents((prev) => (pageIndex === 0 ? rows : [...prev, ...rows]));
     setLikes((prev) => (pageIndex === 0 ? (likeRows ?? []) as LikeRow[] : [...prev, ...((likeRows ?? []) as LikeRow[])]));
     setComments((prev) => (pageIndex === 0 ? (commentRows ?? []) as CommentRow[] : [...prev, ...((commentRows ?? []) as CommentRow[])]));
-    if (profileRows) {
-      const mapped = (profileRows as ProfileRow[]).reduce<Record<string, string>>((acc, row) => {
-        acc[row.id] = row.full_name ?? "Member";
-        return acc;
-      }, {});
-      setProfiles((prev) => ({ ...prev, ...mapped }));
-    }
     setLoading(false);
   };
 
@@ -126,7 +111,7 @@ export default function FeedScreen() {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#e2e8f0" }}>
-            <Text>{profiles[item.member_id] ?? "Member"} • {item.event_type.replace(/_/g, " ")}</Text>
+            <Text>{item.event_type.replace(/_/g, " ")}</Text>
             <Text>{String(item.payload_json?.title ?? "Activity")}</Text>
             <Text>{new Date(item.created_at).toLocaleString()}</Text>
             <Button title={`Like (${likeCounts[item.id] ?? 0})`} onPress={() => likeEvent(item.id)} />

@@ -19,7 +19,6 @@ type FeedEventRow = {
 type LikeRow = { event_id: string; member_id: string };
 
 type CommentRow = { event_id: string; member_id: string; comment_text: string; created_at: string };
-type ProfileRow = { id: string; full_name: string | null };
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -31,7 +30,6 @@ function FeedView() {
   const [events, setEvents] = useState<FeedEventRow[]>([]);
   const [likes, setLikes] = useState<LikeRow[]>([]);
   const [comments, setComments] = useState<CommentRow[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -56,7 +54,7 @@ function FeedView() {
     const eventRows = (data ?? []) as FeedEventRow[];
     const eventIds = eventRows.map((row) => row.id);
 
-    const [{ data: likeRows }, { data: commentRows }, { data: profileRows }] = await Promise.all([
+    const [{ data: likeRows }, { data: commentRows }] = await Promise.all([
       eventIds.length ? supabaseBrowser.from("feed_likes").select("event_id, member_id").in("event_id", eventIds) : Promise.resolve({ data: [] }),
       eventIds.length
         ? supabaseBrowser
@@ -65,24 +63,11 @@ function FeedView() {
             .in("event_id", eventIds)
             .order("created_at", { ascending: true })
         : Promise.resolve({ data: [] }),
-      eventIds.length
-        ? supabaseBrowser
-            .from("users")
-            .select("id, full_name")
-            .in("id", eventRows.map((row) => row.member_id))
-        : Promise.resolve({ data: [] }),
     ]);
 
     setEvents((prev) => (pageIndex === 0 ? eventRows : [...prev, ...eventRows]));
     setLikes((prev) => (pageIndex === 0 ? (likeRows ?? []) as LikeRow[] : [...prev, ...((likeRows ?? []) as LikeRow[])]));
     setComments((prev) => (pageIndex === 0 ? (commentRows ?? []) as CommentRow[] : [...prev, ...((commentRows ?? []) as CommentRow[])]));
-    if (profileRows) {
-      const mapped = (profileRows as ProfileRow[]).reduce<Record<string, string>>((acc, row) => {
-        acc[row.id] = row.full_name ?? "Member";
-        return acc;
-      }, {});
-      setProfiles((prev) => ({ ...prev, ...mapped }));
-    }
     setLoadingData(false);
   };
 
@@ -146,7 +131,7 @@ function FeedView() {
         <section className="space-y-4">
           {events.map((event) => (
             <div key={event.id} className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-              <div className="text-xs text-slate-500">{profiles[event.member_id] ?? "Member"} • {new Date(event.created_at).toLocaleString()}</div>
+              <div className="text-xs text-slate-500">{new Date(event.created_at).toLocaleString()}</div>
               <div className="text-sm text-slate-200">{event.event_type.replace(/_/g, " ")}</div>
               <div className="text-xs text-slate-400">{event.payload_json?.title ?? "Activity"}</div>
               <div className="flex items-center gap-3 text-xs">
