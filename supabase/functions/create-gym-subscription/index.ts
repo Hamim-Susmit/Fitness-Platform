@@ -21,6 +21,60 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
   });
 }
 
+async function handleReferralActivation(
+  serviceClient: ReturnType<typeof createClient>,
+  memberUserId: string
+) {
+  const { data: referral } = await serviceClient
+    .from("referrals")
+    .select("id, referrer_member_id, referred_member_id, status")
+    .eq("referred_member_id", memberUserId)
+    .in("status", ["INVITED", "SIGNED_UP"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!referral) return;
+
+  await serviceClient
+    .from("referrals")
+    .update({ status: "ACTIVATED" })
+    .eq("id", referral.id);
+
+  const { data: existingReward } = await serviceClient
+    .from("referral_rewards")
+    .select("id")
+    .contains("context_json", { referral_id: referral.id })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingReward) return;
+
+  await serviceClient.from("referral_rewards").insert([
+    {
+      referrer_member_id: referral.referrer_member_id,
+      referred_member_id: referral.referred_member_id,
+      reward_type: "POINTS",
+      reward_value: 500,
+      status: "ISSUED",
+      context_json: { referral_id: referral.id, role: "referrer" },
+    },
+    {
+      referrer_member_id: referral.referrer_member_id,
+      referred_member_id: referral.referred_member_id,
+      reward_type: "POINTS",
+      reward_value: 250,
+      status: "ISSUED",
+      context_json: { referral_id: referral.id, role: "referred" },
+    },
+  ]);
+
+  await serviceClient
+    .from("referrals")
+    .update({ status: "REWARDED" })
+    .eq("id", referral.id);
+}
+
 async function resolvePricing(
   serviceClient: ReturnType<typeof createClient>,
   planId: string,
@@ -239,6 +293,14 @@ Deno.serve(async (req) => {
     p_member_id: member.id,
     p_subscription_id: subscriptionRow?.id,
   });
+
+  // Referral activation hook: reward intent only (no Stripe discounts yet).
+  try {
+    await handleReferralActivation(serviceClient, member.user_id);
+  } catch (error) {
+    console.log("referral_activation_failed", error);
+  }
+  // TODO: treat renewals/upgrades as activation when configurable policy is added.
 
   // Analytics event: subscription.created
   try {

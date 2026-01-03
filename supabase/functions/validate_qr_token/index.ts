@@ -29,6 +29,15 @@ function jsonResponse(status: number, body: Record<string, unknown>) {
   });
 }
 
+function startOfDay(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function daysBetween(a: Date, b: Date) {
+  const delta = startOfDay(b).getTime() - startOfDay(a).getTime();
+  return Math.round(delta / (1000 * 60 * 60 * 24));
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return jsonResponse(405, { error: "method_not_allowed" });
@@ -219,6 +228,112 @@ Deno.serve(async (req) => {
 
   if (accessDecision.startsWith("DENIED")) {
     return jsonResponse(403, { error: accessDecision, checkin_id: checkinRow?.id, decision_reason: decisionReason });
+  }
+
+  // Achievements & streaks (event-driven, idempotent).
+  const awardAchievement = async (code: string, context: Record<string, unknown>) => {
+    const { data: achievement } = await serviceClient
+      .from("achievements")
+      .select("id")
+      .eq("code", code)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!achievement) return;
+
+    const { data: existing } = await serviceClient
+      .from("member_achievements")
+      .select("id")
+      .eq("member_id", member.user_id)
+      .eq("achievement_id", achievement.id)
+      .maybeSingle();
+
+    if (existing) return;
+
+    await serviceClient.from("member_achievements").insert({
+      member_id: member.user_id,
+      achievement_id: achievement.id,
+      source: "SYSTEM",
+      context_json: context,
+    });
+  };
+
+  const updateStreak = async (streakType: "CHECKINS") => {
+    const { data: streakRow } = await serviceClient
+      .from("streaks")
+      .select("id, current_count, longest_count, last_event_at")
+      .eq("member_id", member.user_id)
+      .eq("streak_type", streakType)
+      .maybeSingle();
+
+    const eventAt = new Date();
+    let current = streakRow?.current_count ?? 0;
+    let longest = streakRow?.longest_count ?? 0;
+    const lastEvent = streakRow?.last_event_at ? new Date(streakRow.last_event_at) : null;
+
+    if (lastEvent) {
+      const diff = daysBetween(lastEvent, eventAt);
+      if (diff === 0) return { current, longest };
+      current = diff === 1 ? current + 1 : 1;
+    } else {
+      current = 1;
+    }
+
+    longest = Math.max(longest, current);
+
+    if (streakRow?.id) {
+      await serviceClient
+        .from("streaks")
+        .update({ current_count: current, longest_count: longest, last_event_at: eventAt.toISOString() })
+        .eq("id", streakRow.id);
+    } else {
+      await serviceClient.from("streaks").insert({
+        member_id: member.user_id,
+        streak_type: streakType,
+        current_count: current,
+        longest_count: longest,
+        last_event_at: eventAt.toISOString(),
+      });
+    }
+
+    return { current, longest };
+  };
+
+  try {
+    const { count } = await serviceClient
+      .from("checkins")
+      .select("id", { count: "exact", head: true })
+      .eq("member_id", member.id);
+
+    const total = count ?? 0;
+    if (total >= 10) await awardAchievement("CHECKIN_10", { total });
+    if (total >= 100) await awardAchievement("CHECKIN_100", { total });
+
+    const streak = await updateStreak("CHECKINS");
+    if (streak.current >= 7) await awardAchievement("STREAK_7", { streak_type: "CHECKINS" });
+    if (streak.current >= 30) await awardAchievement("STREAK_30", { streak_type: "CHECKINS" });
+
+    if (checkinRow?.id) {
+      const { data: existingEvent } = await serviceClient
+        .from("activity_feed_events")
+        .select("id")
+        .eq("member_id", member.user_id)
+        .eq("event_type", "CHECKIN")
+        .eq("related_id", checkinRow.id)
+        .maybeSingle();
+
+      if (!existingEvent) {
+        await serviceClient.from("activity_feed_events").insert({
+          member_id: member.user_id,
+          event_type: "CHECKIN",
+          related_id: checkinRow.id,
+          payload_json: { gym_id: tokenRecord.gym_id, checked_in_at: new Date().toISOString() },
+          visibility: "FRIENDS_ONLY",
+        });
+      }
+    }
+  } catch (error) {
+    console.log("achievement_update_failed", error);
   }
 
   // Analytics event: member.checkin.created
